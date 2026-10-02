@@ -82,8 +82,9 @@ templ AutomationFormPage(page components.Page, automation *automations.Automatio
 					<div class="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
 						<div class="grid gap-4 sm:grid-cols-2">
 							<div>
+								<input type="hidden" name="event_source" value={ string(automationSource(automation)) } />
 								<label for="eventSource" class="block text-sm font-medium text-slate-700">Event source</label>
-								<select id="eventSource" name="event_source" disabled
+								<select id="eventSource" name="event_source_display" disabled
 									class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
 									<option value="converty" selected>Order event (Converty)</option>
 								</select>
@@ -355,6 +356,13 @@ func automationStatus(a *automations.Automation) string {
 		return ""
 	}
 	return a.OrderStatus
+}
+
+func automationSource(a *automations.Automation) string {
+	if a == nil || a.EventSource == "" {
+		return string(automations.SourceConverty)
+	}
+	return a.EventSource
 }
 
 func automationTemplateID(a *automations.Automation) uuid.UUID {
