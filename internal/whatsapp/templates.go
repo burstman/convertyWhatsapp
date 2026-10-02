@@ -27,8 +27,29 @@ type MerchantTemplate struct {
 	MetaTemplateID   string
 	Components       []byte // raw Meta components JSONB (also drives variable counting on send)
 	NumVariables     int    // placeholder count derived from Components
+	Variables        []TokenKey // semantic map in placeholder order (nil == legacy positional)
+	Source           string     // converty | delivery | any: the event source this message is written for
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
+}
+
+// TemplateBody extracts the BODY text of a template's components, used by the
+// automations UI to preview what a message looks like. Returns "" when the
+// components cannot be parsed or carry no body.
+func TemplateBody(t MerchantTemplate) string {
+	var comps []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(t.Components, &comps); err != nil {
+		return ""
+	}
+	for _, c := range comps {
+		if c.Type == "BODY" {
+			return c.Text
+		}
+	}
+	return ""
 }
 
 // TemplateDraft is what a merchant submits. Raw components are validated by
@@ -39,6 +60,8 @@ type TemplateDraft struct {
 	Language   string
 	Category   string
 	Components json.RawMessage
+	Variables  []TokenKey // semantic variable map (nil == legacy positional)
+	Source     string     // converty | delivery | any (see SourceConverty etc.)
 }
 
 // CreateTemplate submits a template to Meta through the platform's central
@@ -91,13 +114,15 @@ func (s *Service) CreateTemplate(ctx context.Context, shopID uuid.UUID, draft Te
 	t.MetaWarnings = warnings
 	t.MetaTemplateID = resp.ID
 	t.Components = draft.Components
+	t.Variables = draft.Variables
+	t.Source = NormalizeSource(draft.Source)
 
 	rowErr := s.pool.QueryRow(ctx, `
 		INSERT INTO templates (
 			shop_id, meta_template_name, meta_template_id, language, category,
 			status, approval_status, rejection_reason, marketing_flagged, meta_warnings,
-			marketing_flagged_at, components
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)
+			marketing_flagged_at, components, variables_map, source
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb, $14)
 		ON CONFLICT (shop_id, meta_template_name, language) DO UPDATE SET
 			meta_template_id   = EXCLUDED.meta_template_id,
 			category           = EXCLUDED.category,
@@ -109,11 +134,13 @@ func (s *Service) CreateTemplate(ctx context.Context, shopID uuid.UUID, draft Te
 			marketing_flagged_at = COALESCE(templates.marketing_flagged_at, EXCLUDED.marketing_flagged_at),
 			purge_scheduled_at = CASE WHEN NOT EXCLUDED.marketing_flagged THEN NULL ELSE templates.purge_scheduled_at END,
 			components         = EXCLUDED.components,
+			variables_map      = EXCLUDED.variables_map,
+			source             = EXCLUDED.source,
 			updated_at         = now()
 		RETURNING id, created_at, updated_at`,
 		shopID, draft.Name, resp.ID, draft.Language, draft.Category,
 		t.Status, approval, rejection, t.MarketingFlagged, t.MetaWarnings,
-		flaggedAtExpr(t.MarketingFlagged), draft.Components,
+		flaggedAtExpr(t.MarketingFlagged), draft.Components, draft.Variables, t.Source,
 	).Scan(&t.ID, &t.CreatedAt, &t.UpdatedAt)
 	if rowErr != nil {
 		return MerchantTemplate{}, fmt.Errorf("store template: %w", rowErr)
@@ -246,7 +273,8 @@ func (s *Service) Templates(ctx context.Context, shopID uuid.UUID) ([]MerchantTe
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, shop_id, meta_template_name, language, category, status,
 		       approval_status, rejection_reason, marketing_flagged, meta_warnings,
-		       meta_template_id, components, created_at, updated_at
+		       meta_template_id, components, COALESCE(variables_map, '[]'::jsonb), source,
+		       created_at, updated_at
 		FROM templates
 		WHERE shop_id = $1
 		ORDER BY created_at DESC`,
@@ -259,13 +287,10 @@ func (s *Service) Templates(ctx context.Context, shopID uuid.UUID) ([]MerchantTe
 
 	var out []MerchantTemplate
 	for rows.Next() {
-		var t MerchantTemplate
-		if err := rows.Scan(&t.ID, &t.ShopID, &t.Name, &t.Language, &t.Category,
-			&t.Status, &t.ApprovalStatus, &t.RejectionReason, &t.MarketingFlagged, &t.MetaWarnings,
-			&t.MetaTemplateID, &t.Components, &t.CreatedAt, &t.UpdatedAt); err != nil {
+		t, err := scanTemplate(rows)
+		if err != nil {
 			return nil, err
 		}
-		t.NumVariables = countVariablesFromJSON(t.Components)
 		out = append(out, t)
 	}
 	return out, rows.Err()
@@ -273,22 +298,40 @@ func (s *Service) Templates(ctx context.Context, shopID uuid.UUID) ([]MerchantTe
 
 // Template returns one merchant template scoped to its shop.
 func (s *Service) Template(ctx context.Context, shopID, templateID uuid.UUID) (MerchantTemplate, error) {
-	var t MerchantTemplate
-	err := s.pool.QueryRow(ctx, `
+	row := s.pool.QueryRow(ctx, `
 		SELECT id, shop_id, meta_template_name, language, category, status,
 		       approval_status, rejection_reason, marketing_flagged, meta_warnings,
-		       meta_template_id, components, created_at, updated_at
+		       meta_template_id, components, COALESCE(variables_map, '[]'::jsonb), source,
+		       created_at, updated_at
 		FROM templates
 		WHERE id = $1 AND shop_id = $2`,
 		templateID, shopID,
-	).Scan(&t.ID, &t.ShopID, &t.Name, &t.Language, &t.Category,
-		&t.Status, &t.ApprovalStatus, &t.RejectionReason, &t.MarketingFlagged, &t.MetaWarnings,
-		&t.MetaTemplateID, &t.Components, &t.CreatedAt, &t.UpdatedAt)
+	)
+	t, err := scanTemplate(row)
 	if err == pgx.ErrNoRows {
 		return MerchantTemplate{}, nil
 	}
-	t.NumVariables = countVariablesFromJSON(t.Components)
 	return t, err
+}
+
+type templateScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanTemplate(row templateScanner) (MerchantTemplate, error) {
+	var t MerchantTemplate
+	var varJSON []byte
+	err := row.Scan(&t.ID, &t.ShopID, &t.Name, &t.Language, &t.Category,
+		&t.Status, &t.ApprovalStatus, &t.RejectionReason, &t.MarketingFlagged, &t.MetaWarnings,
+		&t.MetaTemplateID, &t.Components, &varJSON, &t.Source, &t.CreatedAt, &t.UpdatedAt)
+	if err != nil {
+		return MerchantTemplate{}, err
+	}
+	if len(varJSON) > 0 && string(varJSON) != "[]" && string(varJSON) != "null" {
+		_ = json.Unmarshal(varJSON, &t.Variables)
+	}
+	t.NumVariables = countVariablesFromJSON(t.Components)
+	return t, nil
 }
 
 // countVariablesFromJSON derives the placeholder count from stored Meta

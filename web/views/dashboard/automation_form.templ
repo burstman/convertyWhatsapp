@@ -1,0 +1,480 @@
+package viewsdashboard
+
+import (
+	"fmt"
+	"slices"
+	"strconv"
+	"time"
+
+	"github.com/google/uuid"
+
+	"whatsappconverty/internal/automations"
+	"whatsappconverty/internal/whatsapp"
+	"whatsappconverty/web/views/components"
+	"whatsappconverty/web/views/layouts"
+)
+
+templ AutomationFormPage(page components.Page, automation *automations.Automation, templates []whatsapp.MerchantTemplate, isEdit bool, flash AutomationFlash, source string, sourceCounts map[string]int) {
+	@layouts.Shell(page) {
+		<div class="mx-auto max-w-6xl">
+			<div class="flex items-center justify-between">
+				<div>
+					<h2 class="text-2xl font-bold text-slate-900">
+						if isEdit {
+							Edit automation
+						} else {
+							New automation
+						}
+					</h2>
+					<p class="mt-1 text-sm text-slate-500">
+						The template is one of your approved templates — its content is edited in the Templates menu.
+					</p>
+				</div>
+				<a href="/automations" class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50">Back</a>
+			</div>
+
+			if flash.Error != "" {
+				<div class="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{ flash.Error }</div>
+			}
+
+			<form method="post" action={ templ.SafeURL(formAction(automation)) } class="mt-6 grid gap-6 lg:grid-cols-3"
+				data-automation-form
+				data-converty-count={ strconv.Itoa(sourceCounts["converty"]) }>
+				<div class="space-y-6 lg:col-span-2">
+					<div class="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+						<div class="grid gap-4 sm:grid-cols-2">
+							<div>
+								<label for="name" class="block text-sm font-medium text-slate-700">Automation name</label>
+								<input id="name" name="name" type="text" required value={ automationName(automation) }
+									placeholder="e.g. Order delivered notification"
+									class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500" />
+							</div>
+							<div>
+								<label for="description" class="block text-sm font-medium text-slate-700">Description (optional)</label>
+								<input id="description" name="description" type="text" value={ automationDescription(automation) }
+									placeholder="What this automation does"
+									class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500" />
+							</div>
+						</div>
+
+						<div>
+							<label class="block text-sm font-medium text-slate-700">Send type</label>
+							<div class="mt-2 flex flex-col gap-2">
+								<label class="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+									<input type="radio" name="send_mode" value="instant" checked={ selectedMode(automation) == "instant" }
+										class="h-4 w-4 text-indigo-600 focus:ring-indigo-500" />
+									Instant — send as soon as the event arrives
+								</label>
+								<label class="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+									<input type="radio" name="send_mode" value="fixed" checked={ selectedMode(automation) == "fixed" }
+										class="h-4 w-4 text-indigo-600 focus:ring-indigo-500" />
+									Scheduled — send at a fixed time on the chosen days
+								</label>
+								<label class="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+									<input type="radio" name="send_mode" value="delayed" checked={ selectedMode(automation) == "delayed" }
+										class="h-4 w-4 text-indigo-600 focus:ring-indigo-500" />
+									Delayed — send a few minutes after the event
+								</label>
+							</div>
+						</div>
+					</div>
+
+					<div class="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+						<div class="grid gap-4 sm:grid-cols-2">
+							<div>
+								<label for="eventSource" class="block text-sm font-medium text-slate-700">Event source</label>
+								<select id="eventSource" name="event_source" disabled
+									class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+									<option value="converty" selected>Order event (Converty)</option>
+								</select>
+							</div>
+							<div>
+								<label for="eventStatus" class="block text-sm font-medium text-slate-700">Trigger on</label>
+								<select id="eventStatus" name="event_status" required
+									class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+									<option value="" disabled selected={ automationStatus(automation) == "" }>Choose a status…</option>
+									for _, s := range automations.ConvertyStatuses() {
+										<option value={ s } selected={ automationStatus(automation) == s }>{ s }</option>
+									}
+								</select>
+							</div>
+						</div>
+					</div>
+
+					<div class="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+						<label for="templateSelect" class="block text-sm font-medium text-slate-700">Message (approved template)</label>
+						if sourceCounts[automations.SourceConverty] == 0 {
+							<p class="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+								Create and get a template approved in the Templates menu first — an automation can only send an approved template.
+							</p>
+						}
+						if len(templates) == 0 {
+							<div class="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+								Your shop has no approved template. Create and get one approved in the Templates menu first.
+							</div>
+						} else {
+							<select id="templateSelect" name="template_id" required
+								class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+								<option value="" disabled selected={ automationTemplateID(automation) == uuid.Nil }>Choose a template…</option>
+								for _, t := range templates {
+									<option value={ t.ID.String() } selected={ automationTemplateID(automation) == t.ID }
+										data-body={ whatsapp.TemplateBody(t) }>{ t.Name } ({ t.Language })</option>
+								}
+							</select>
+						}
+					</div>
+
+					<div class="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+						<h3 class="text-sm font-semibold text-slate-700">Schedule settings</h3>
+
+						<div id="fixedSchedule" class={ scheduleClass(automation, "fixed") }
+							x-data="{
+								tz: 'Africa/Tunis',
+								time: '00:00',
+								tick() {
+									try {
+										var clock = new Intl.DateTimeFormat(undefined, {
+											hour: '2-digit', minute: '2-digit', timeZone: this.tz
+										}).format(new Date());
+										this.now = 'Right now it is ' + clock + ' in ' + this.tz +
+											' \u2014 a send at ' + (this.time || '00:00') + ' leaves at ' +
+											(this.time || '00:00') + ' there.';
+									} catch (err) {
+										this.now = 'Could not read the clock for ' + this.tz + '.';
+									}
+								}
+							}" x-init="tick()">
+							<div class="grid gap-4 sm:grid-cols-2">
+								<div>
+									<label class="block text-sm font-medium text-slate-700">Send days</label>
+									<div class="mt-2 grid grid-cols-4 gap-2">
+										for d := 1; d <= 7; d++ {
+											<label class="flex cursor-pointer items-center gap-1.5 text-sm text-slate-700">
+												<input type="checkbox" name="send_days" value={ strconv.Itoa(d) } checked={ dayChecked(automation, d) } disabled={ selectedMode(automation) != "fixed" }
+													class="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500" />
+												{ dayNames[d-1] }
+											</label>
+										}
+									</div>
+								</div>
+								<div>
+									<label for="sendTime" class="block text-sm font-medium text-slate-700">Send time</label>
+									<input id="sendTime" name="send_time" type="time" value={ sendTimeValue(automation) } disabled={ selectedMode(automation) != "fixed" }
+										x-model="time" @input="tick()"
+										class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500" />
+								</div>
+							</div>
+							<div class="mt-4">
+								<label for="sendTimezone" class="block text-sm font-medium text-slate-700">Timezone</label>
+								<select id="sendTimezone" name="send_timezone" x-model="tz" @change="tick()" disabled={ selectedMode(automation) != "fixed" }
+									class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+									for _, zone := range timezoneOptions(automation) {
+										<option value={ zone.Name } selected={ zone.Name == sendTimezoneValue(automation) }>{ zone.Label }</option>
+									}
+								</select>
+								<p class="mt-2 text-xs text-slate-500" x-text="now"></p>
+							</div>
+							<p class="mt-3 text-xs text-slate-500">
+								An event arriving before the time waits until it; an event at or after it is sent
+								immediately. On a day you didn't select, the send waits for the next selected day at the
+								same time.
+							</p>
+						</div>
+
+						<div id="delayedSchedule" class={ scheduleClass(automation, "delayed") }>
+							<div class="sm:w-64">
+								<label for="sendDelay" class="block text-sm font-medium text-slate-700">Delay after the event (minutes)</label>
+								<input id="sendDelay" name="send_delay_minutes" type="number" min="1" max="20160" value={ delayInputValue(automation) } disabled={ selectedMode(automation) != "delayed" }
+									placeholder="e.g. 30"
+									class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500" />
+							</div>
+							<p class="mt-3 text-xs text-slate-500">The message is sent { delayHint(automation) } minutes after the event, even if the daily send time has passed.</p>
+						</div>
+					</div>
+
+					<div class="flex flex-wrap items-center gap-3 pb-6">
+						<button type="submit" id="automationSubmit"
+							class="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700">
+							if isEdit {
+								Save
+							} else {
+								Create automation
+							}
+						</button>
+						<a href="/automations" class="rounded-lg px-4 py-2 text-sm font-medium text-slate-500 transition hover:text-slate-700">Cancel</a>
+						<p id="automationProblem" class="hidden w-full rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"></p>
+					</div>
+				</div>
+
+				<aside class="lg:col-span-1">
+					<div class="sticky top-6 rounded-xl border border-slate-200 bg-[#edf6ff] p-5">
+						<div class="text-sm font-semibold text-slate-800">Message preview</div>
+						<div class="mt-1 text-xs text-slate-500">What the customer will receive</div>
+						<div id="previewBody" class="mt-3 min-h-20 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+							Select a template to preview.
+						</div>
+						<div class="mt-3 text-xs text-slate-500">
+							The variables you drop into the message when writing a template are filled
+							automatically from the order that triggered the send.
+						</div>
+					</div>
+				</aside>
+			</form>
+		</div>
+
+<script>
+// The form's behaviour is plain DOM on purpose: panels, validation and the
+// preview must not depend on a framework layer booting, or a dead submit looks
+// like a dead button.
+(function () {
+	var form = document.querySelector("form[data-automation-form]");
+	if (!form) { return; }
+
+	var fixed = document.getElementById("fixedSchedule");
+	var delayed = document.getElementById("delayedSchedule");
+	var sendTime = document.getElementById("sendTime");
+	var sendTimezone = document.getElementById("sendTimezone");
+	var sendDelay = document.getElementById("sendDelay");
+	var select = document.getElementById("templateSelect");
+	var preview = document.getElementById("previewBody");
+	var problem = document.getElementById("automationProblem");
+
+	function mode() {
+		var checked = form.querySelector("input[name=send_mode]:checked");
+		return checked ? checked.value : "instant";
+	}
+
+	function dayCount() {
+		return form.querySelectorAll("input[name=send_days]:checked").length;
+	}
+
+	// Hidden panels must be disabled, not just invisible: a control that fails
+	// validation inside a display:none panel is skipped by the browser, so the
+	// submit is refused and the only trace is a console line pointing at a field
+	// the user cannot see. Disabling also keeps them out of the POST body.
+	function setHidden(el, hidden) {
+		if (!el) { return; }
+		el.classList.toggle("hidden", hidden);
+		var fields = el.querySelectorAll("input, select, textarea");
+		for (var i = 0; i < fields.length; i++) { fields[i].disabled = hidden; }
+	}
+
+	function syncMode() {
+		var value = mode();
+		setHidden(fixed, value !== "fixed");
+		setHidden(delayed, value !== "delayed");
+	}
+
+	function templateProblem() {
+		var counts = parseInt(form.dataset.convertyCount || "0", 10);
+		if (counts > 0) { return ""; }
+		return "No approved template yet \u2014 create and get one approved in Templates first.";
+	}
+
+	function scheduleProblem() {
+		if (mode() === "fixed") {
+			if (!sendTime || !sendTime.value) { return "A scheduled send needs a send time."; }
+			if (dayCount() === 0) { return "A scheduled send needs at least one send day."; }
+			if (sendTimezone && !sendTimezone.value.trim()) { return "Pick the timezone the send time is in \u2014 Africa/Tunis for local time."; }
+		}
+		if (mode() === "delayed") {
+			var delay = sendDelay ? parseInt(sendDelay.value, 10) : 0;
+			if (!delay || delay < 1) { return "A delayed send needs a delay of at least one minute."; }
+		}
+		return "";
+	}
+
+	function problems() {
+		return [templateProblem(), scheduleProblem()].filter(Boolean).join(" ");
+	}
+
+	// The button is never disabled: a control that silently refuses to submit is
+	// indistinguishable from a broken page. The reason is shown next to the button,
+	// an incomplete submit is held back here, and the server re-checks everything
+	// and flashes the field that is wrong.
+	function validate() {
+		var message = problems();
+		if (problem) {
+			problem.textContent = message;
+			problem.classList.toggle("hidden", message === "");
+		}
+		return message;
+	}
+
+	function renderPreview() {
+		if (!preview || !select) { return; }
+		var opt = select.options[select.selectedIndex];
+		preview.textContent = opt && opt.getAttribute("data-body")
+			? opt.getAttribute("data-body")
+			: "Select a template to preview.";
+	}
+
+	form.addEventListener("change", function (evt) {
+		var target = evt.target;
+		if (!target) { return; }
+		if (target.name === "send_mode") { syncMode(); }
+		if (target.id === "templateSelect") { renderPreview(); }
+		validate();
+	});
+	form.addEventListener("input", function () { validate(); });
+	form.addEventListener("submit", function (evt) {
+		if (validate() !== "") { evt.preventDefault(); }
+	});
+
+	syncMode();
+	renderPreview();
+	validate();
+})();
+		</script>
+	}
+}
+
+func formAction(a *automations.Automation) string {
+	if a == nil {
+		return "/automations"
+	}
+	return "/automations/" + a.ID.String() + "/update"
+}
+
+func automationName(a *automations.Automation) string {
+	if a == nil {
+		return ""
+	}
+	return a.Name
+}
+
+func automationDescription(a *automations.Automation) string {
+	if a == nil {
+		return ""
+	}
+	return a.Description
+}
+
+func automationStatus(a *automations.Automation) string {
+	if a == nil {
+		return ""
+	}
+	return a.OrderStatus
+}
+
+func automationTemplateID(a *automations.Automation) uuid.UUID {
+	if a == nil {
+		return uuid.Nil
+	}
+	return a.TemplateID
+}
+
+func selectedMode(a *automations.Automation) string {
+	if a == nil {
+		return "instant"
+	}
+	if a.DelayMinutes != nil {
+		return "delayed"
+	}
+	if a.SendTime != nil {
+		return "fixed"
+	}
+	return "instant"
+}
+
+func dayChecked(a *automations.Automation, weekday int) bool {
+	if a == nil {
+		return true
+	}
+	for _, d := range a.SendDays {
+		if d == weekday {
+			return true
+		}
+	}
+	return false
+}
+
+func sendTimeValue(a *automations.Automation) string {
+	if a == nil || a.SendTime == nil {
+		return ""
+	}
+	return fmt.Sprintf("%02d:%02d", a.SendTime.Hour(), a.SendTime.Minute())
+}
+
+// delayInputValue leaves the box empty for a new automation: a 0 next to min=1 is
+// a native range violation, and a field that fails validation while its panel is
+// hidden blocks the whole submit with an error Chrome cannot even show.
+func delayInputValue(a *automations.Automation) string {
+	if a == nil || a.DelayMinutes == nil {
+		return ""
+	}
+	return strconv.Itoa(*a.DelayMinutes)
+}
+
+func delayHint(a *automations.Automation) string {
+	if a == nil || a.DelayMinutes == nil {
+		return "the delay"
+	}
+	return strconv.Itoa(*a.DelayMinutes)
+}
+
+func sendTimezoneValue(a *automations.Automation) string {
+	if a == nil || a.SendTimezone == "" {
+		return automations.DefaultTimezone
+	}
+	return a.SendTimezone
+}
+
+type timezoneOption struct {
+	Name  string
+	Label string
+}
+
+// timezoneOptions builds the dropdown for the chosen schedule. A zone saved
+// before this list existed is put first and kept selected, so opening the form
+// to change something else does not quietly rewrite the timezone behind the
+// merchant's back.
+func timezoneOptions(a *automations.Automation) []timezoneOption {
+	chosen := sendTimezoneValue(a)
+	seen := make(map[string]bool, len(automations.Timezones)+1)
+	out := make([]timezoneOption, 0, len(automations.Timezones)+1)
+	add := func(name string) {
+		if seen[name] {
+			return
+		}
+		seen[name] = true
+		out = append(out, timezoneOption{Name: name, Label: timezoneLabel(name)})
+	}
+	if !slices.Contains(automations.Timezones, chosen) {
+		add(chosen)
+	}
+	for _, zone := range automations.Timezones {
+		add(zone)
+	}
+	return out
+}
+
+// timezoneLabel shows the zone's current UTC offset. "10:00" is ambiguous without
+// it: Africa/Tunis is UTC+1 year-round, so a 10:00 rule set to UTC fires at 11:00
+// on the clock in front of the merchant.
+func timezoneLabel(name string) string {
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		return name
+	}
+	_, offset := time.Now().In(loc).Zone()
+	sign := "+"
+	if offset < 0 {
+		sign = "-"
+		offset = -offset
+	}
+	hours := offset / 3600
+	minutes := (offset % 3600) / 60
+	if minutes == 0 {
+		return fmt.Sprintf("%s (UTC%s%d)", name, sign, hours)
+	}
+	return fmt.Sprintf("%s (UTC%s%d:%02d)", name, sign, hours, minutes)
+}
+
+// scheduleClass shows the panel of the automation's send mode.
+func scheduleClass(a *automations.Automation, want string) string {
+	if selectedMode(a) == want {
+		return "block"
+	}
+	return "block hidden"
+}

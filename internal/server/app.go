@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"whatsappconverty/internal/automations"
 	"whatsappconverty/internal/auth"
 	"whatsappconverty/internal/config"
 	"whatsappconverty/internal/converty"
@@ -26,19 +27,22 @@ type App struct {
 	Dashboard *dashboard.Repository
 	Converty  *converty.Service
 	WhatsApp  *whatsapp.Service
+	Automations *automations.Processor
 }
 
 func New(cfg config.Config, log *slog.Logger, pool *pgxpool.Pool) *App {
 	shopsRepo := shops.NewRepository(pool)
+	wa := whatsapp.NewService(cfg, pool, log)
 	return &App{
-		Cfg:       cfg,
-		Log:       log,
-		Pool:      pool,
-		Auth:      auth.NewService(pool, *shopsRepo),
-		Shops:     shopsRepo,
-		Dashboard: dashboard.NewRepository(pool),
-		Converty:  converty.NewService(cfg, pool, log),
-		WhatsApp:  whatsapp.NewService(cfg, pool, log),
+		Cfg:         cfg,
+		Log:         log,
+		Pool:        pool,
+		Auth:        auth.NewService(pool, *shopsRepo),
+		Shops:       shopsRepo,
+		Dashboard:   dashboard.NewRepository(pool),
+		Converty:    converty.NewService(cfg, pool, log),
+		WhatsApp:    wa,
+		Automations: automations.NewProcessor(cfg, pool, log, wa),
 	}
 }
 
@@ -90,7 +94,16 @@ func (a *App) InitializeRoutes(r *chi.Mux) {
 		pr.Post("/integrations/{id}/update", kit.Handler(a.handleIntegrationUpdate))
 		pr.Post("/integrations/{id}/activate", kit.Handler(a.handleIntegrationActivate))
 		pr.Post("/integrations/{id}/delete", kit.Handler(a.handleIntegrationDelete))
-		pr.Get("/automations", kit.Handler(a.handlePlaceholder("automations")))
+		pr.Get("/automations", kit.Handler(a.handleAutomations))
+		pr.Get("/automations/new", kit.Handler(a.handleAutomationEdit))
+		pr.Post("/automations", kit.Handler(a.handleAutomationCreate))
+		pr.Get("/automations/{id}/edit", kit.Handler(a.handleAutomationEdit))
+		pr.Post("/automations/{id}/update", kit.Handler(a.handleAutomationUpdate))
+		pr.Post("/automations/{id}/toggle", kit.Handler(a.handleAutomationToggle))
+		pr.Post("/automations/{id}/test", kit.Handler(a.handleAutomationTest))
+		pr.Post("/automations/{id}/delete", kit.Handler(a.handleAutomationDelete))
+		pr.Get("/automations/{id}/history", kit.Handler(a.handleAutomationHistory))
+		pr.Post("/automations/{id}/retry-held", kit.Handler(a.handleAutomationRetryHeld))
 		pr.Get("/templates", kit.Handler(a.handleTemplates))
 		pr.Post("/templates/create", kit.Handler(a.handleTemplateCreate))
 		pr.Get("/templates/refresh", kit.Handler(a.handleTemplateRefresh))

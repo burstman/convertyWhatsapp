@@ -1,0 +1,438 @@
+package viewsdashboard
+
+import (
+	"fmt"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"whatsappconverty/internal/automations"
+	"whatsappconverty/internal/whatsapp"
+	"whatsappconverty/web/views/components"
+	"whatsappconverty/web/views/layouts"
+)
+
+// statusLabel and statusBadgeClass map a message status to its pill. The text
+// is kept legible on the light background rather than the slate-400 wash that
+// reads as invisible.
+func statusLabel(status string) string {
+	switch status {
+	case "delivered":
+		return "Delivered"
+	case "read":
+		return "Read"
+	case "sent":
+		return "Sent"
+	case "failed":
+		return "Failed"
+	case "queued":
+		return "Not sent"
+	default:
+		return status
+	}
+}
+
+func statusBadgeClass(status string) string {
+	switch status {
+	case "delivered":
+		return "bg-emerald-50 text-emerald-700"
+	case "read":
+		return "bg-emerald-100 text-emerald-800"
+	case "sent":
+		return "bg-indigo-50 text-indigo-700"
+	case "failed":
+		return "bg-rose-50 text-rose-700"
+	case "queued":
+		return "bg-slate-100 text-slate-600"
+	default:
+		return "bg-slate-100 text-slate-600"
+	}
+}
+
+func countClass(n int) string {
+	if n > 0 {
+		return "text-slate-900"
+	}
+	return "text-slate-500"
+}
+
+// failureClass makes a non-zero failure count shout, so a broken automation is
+// visible in the summary without reading the rows.
+func failureClass(n int) string {
+	if n > 0 {
+		return "text-rose-600"
+	}
+	return "text-slate-500"
+}
+
+// heldBackClass is the softer cousin of failureClass: a held-back send is not a
+// failure, it is a message the system correctly declined to send. Amber says
+// "look at this" without the alarm of a failed send.
+func heldBackClass(n int) string {
+	if n > 0 {
+		return "text-amber-700"
+	}
+	return "text-slate-500"
+}
+
+// historyTime formats a ledger timestamp in the dashboard's local time, or a
+// dash when the event has not happened yet.
+func historyTime(t *time.Time) string {
+	if t == nil {
+		return "\u2014"
+	}
+	return t.Local().Format("02 Jan 15:04")
+}
+
+func historyWhen(created time.Time) string {
+	return created.Local().Format("02 Jan 15:04:05")
+}
+
+// historyError surfaces whatever Meta complained about: the recorded error text
+// first, then the first webhook error element.
+func historyError(m whatsapp.AutomationMessage) string {
+	if m.ErrorMessage != "" {
+		return m.ErrorMessage
+	}
+	for _, e := range m.MetaErrors {
+		if e.Title == "" {
+			continue
+		}
+		if e.Code != 0 {
+			return fmt.Sprintf("%s (%d)", e.Title, e.Code)
+		}
+		return e.Title
+	}
+	return ""
+}
+
+// historyNote explains when a row appears, using this automation's own rule. The
+// wording matters more than it looks: a scheduled send is parked in the queue with
+// no ledger row at all, so a merchant checking at 09:00 for a 10:00 automation
+// would otherwise read the empty list as a failure.
+func historyNote(a automations.Automation) string {
+	rule := "sends as soon as the event happens"
+	switch {
+	case a.DelayMinutes != nil:
+		rule = fmt.Sprintf("sends %d minutes after the event", *a.DelayMinutes)
+	case a.SendTime != nil:
+		zone := a.SendTimezone
+		if zone == "" {
+			zone = automations.DefaultTimezone
+		}
+		rule = fmt.Sprintf("sends at %02d:%02d %s",
+			a.SendTime.Hour(), a.SendTime.Minute(), zone)
+	}
+	return "This automation " + rule + ". Messages appear here only once they have " +
+		"been sent, so an empty list before the first one is normal."
+}
+
+// historyVariables renders the filled placeholders so a merchant can see what
+// the message actually carried, ordered by key so the column does not jitter.
+func historyVariables(m whatsapp.AutomationMessage) string {
+	if len(m.TemplateVariables) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(m.TemplateVariables))
+	for k := range m.TemplateVariables {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%s", k, m.TemplateVariables[k]))
+	}
+	return strings.Join(parts, " \u00b7 ")
+}
+
+// suppressionMissing names the variables a held-back send was waiting for, in
+// the merchant's own words ("Customer name") rather than token keys.
+func suppressionMissing(s automations.Suppression) string {
+	if len(s.Missing) == 0 {
+		return ""
+	}
+	labels := make([]string, 0, len(s.Missing))
+	for _, k := range s.Missing {
+		labels = append(labels, whatsapp.TokenLabel(k))
+	}
+	return strings.Join(labels, ", ")
+}
+
+// retryBannerClass stays green only when everything held back actually went out.
+// A partial result is amber: something the merchant was told about still needs
+// attention, so it must not be dressed as a success.
+func retryBannerClass(stillHeld int) string {
+	if stillHeld == 0 {
+		return "border-emerald-200 bg-emerald-50 text-emerald-800"
+	}
+	return "border-amber-200 bg-amber-50 text-amber-800"
+}
+
+// historyBody is the message as it was sent, snapshotted at send time. This is
+// the one thing a merchant opens the history to check and it used to be
+// missing: the page said a message went out, to whom, and nothing about what
+// it said.
+func historyBody(m whatsapp.AutomationMessage) string {
+	return strings.TrimSpace(m.BodyText)
+}
+
+// historyBodyClass keeps the message text readable on the light table without
+// letting a long template stretch the row.
+func historyBodyClass(n int) string {
+	return "block whitespace-pre-line break-words text-slate-700" + lineClamp(n)
+}
+
+func lineClamp(n int) string {
+	switch n {
+	case 1:
+		return " truncate"
+	case 3:
+		return " line-clamp-3"
+	default:
+		return " line-clamp-2"
+	}
+}
+
+templ AutomationHistoryPage(page components.Page, a automations.Automation, templateName string, rows []whatsapp.AutomationMessage, counts whatsapp.AutomationSendCounts, suppressions []automations.Suppression, retry automations.RetryResult) {
+	@layouts.Shell(page) {
+		<div class="space-y-6">
+			<div class="flex items-start justify-between gap-4">
+				<div>
+					<a href="/automations" class="text-sm font-medium text-indigo-600 hover:text-indigo-700">← All automations</a>
+					<h2 class="mt-1 text-2xl font-bold text-slate-900">{ a.Name } · send history</h2>
+					<p class="mt-1 text-sm text-slate-500">
+						Every message this automation has sent, newest first.
+						Trigger: <span class="font-medium text-slate-700">{ a.EventSource } / { a.OrderStatus }</span>
+						· { typeLabel(a) }
+						· template <span class="font-medium text-slate-700">{ templateName }</span>
+						if !a.Enabled {
+							<span class="ml-1 font-medium text-slate-600">(paused)</span>
+						}
+					</p>
+				</div>
+				<a href={ templ.SafeURL("/automations/" + a.ID.String() + "/edit") }
+					class="inline-flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">Edit automation</a>
+			</div>
+
+			<div class="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+				<div class="rounded-xl border border-slate-200 bg-white p-4">
+					<div class="text-xs uppercase tracking-wide text-slate-500">Total</div>
+					<div class={ "mt-1 text-2xl font-bold", countClass(counts.Total) }>{ strconv.Itoa(counts.Total) }</div>
+				</div>
+				<div class="rounded-xl border border-slate-200 bg-white p-4">
+					<div class="text-xs uppercase tracking-wide text-slate-500">Sent</div>
+					<div class={ "mt-1 text-2xl font-bold", countClass(counts.Sent) }>{ strconv.Itoa(counts.Sent) }</div>
+				</div>
+				<div class="rounded-xl border border-slate-200 bg-white p-4">
+					<div class="text-xs uppercase tracking-wide text-slate-500">Delivered</div>
+					<div class={ "mt-1 text-2xl font-bold", countClass(counts.Delivered) }>{ strconv.Itoa(counts.Delivered) }</div>
+				</div>
+				<div class="rounded-xl border border-slate-200 bg-white p-4">
+					<div class="text-xs uppercase tracking-wide text-slate-500">Read</div>
+					<div class={ "mt-1 text-2xl font-bold", countClass(counts.Read) }>{ strconv.Itoa(counts.Read) }</div>
+				</div>
+				<div class="rounded-xl border border-slate-200 bg-white p-4">
+					<div class="text-xs uppercase tracking-wide text-slate-500">Failed</div>
+					<div class={ "mt-1 text-2xl font-bold", failureClass(counts.Failed) }>{ strconv.Itoa(counts.Failed) }</div>
+				</div>
+				<div class="rounded-xl border border-slate-200 bg-white p-4">
+					<div class="text-xs uppercase tracking-wide text-slate-500">Not sent</div>
+					<div class={ "mt-1 text-2xl font-bold", countClass(counts.Queued) }>{ strconv.Itoa(counts.Queued) }</div>
+				</div>
+				<div class="rounded-xl border border-slate-200 bg-white p-4">
+					<div class="text-xs uppercase tracking-wide text-slate-500">Held back</div>
+					<div class={ "mt-1 text-2xl font-bold", heldBackClass(len(suppressions)) }>{ strconv.Itoa(len(suppressions)) }</div>
+				</div>
+			</div>
+
+			<p class="text-sm text-slate-500">{ historyNote(a) }</p>
+
+			if retry.Attempted > 0 || retry.AlreadySent > 0 || retry.TemplateMissing > 0 {
+				<div class={ "rounded-xl border px-4 py-3 text-sm", retryBannerClass(retry.StillHeld + retry.TemplateMissing + retry.Rejected) }>
+					if retry.Sent > 0 {
+						<span class="font-medium">{ strconv.Itoa(retry.Sent) } message(s) sent now.</span>
+					} else if retry.Scheduled > 0 {
+						<span class="font-medium">{ strconv.Itoa(retry.Scheduled) } message(s) are on their way now.</span>
+					} else if retry.TemplateMissing > 0 {
+						<span class="font-medium">This automation cannot send at all right now.</span>
+					} else {
+						<span class="font-medium">Nothing new could be sent.</span>
+					}
+					if retry.TemplateMissing > 0 {
+						<span>
+							{ strconv.Itoa(retry.TemplateMissing) }
+							{ " " }need the template this automation points at. Choose another template on the automation — retrying will not help.
+						</span>
+					}
+					if retry.StillHeld > 0 {
+						<span>
+							{ strconv.Itoa(retry.StillHeld) } still held back — the template needs data this order does not have yet.
+						</span>
+					}
+					if retry.Rejected > 0 {
+						<span>
+							{ strconv.Itoa(retry.Rejected) } were refused by the send rules (consent, or a template the carrier treats as marketing). Retrying will not change it.
+						</span>
+					}
+					if retry.AlreadySent > 0 {
+						<span>
+							{ strconv.Itoa(retry.AlreadySent) } had already been sent and were left alone.
+						</span>
+					}
+				</div>
+			}
+
+			<div class="rounded-xl border border-slate-200 bg-white">
+				if len(rows) == 0 {
+					<div class="px-5 py-12 text-center">
+						<p class="text-sm font-medium text-slate-700">Nothing sent yet</p>
+						if len(suppressions) > 0 {
+							<p class="mt-1 text-sm text-slate-500">
+								{ strconv.Itoa(len(suppressions)) } event(s) matched this automation but were held
+								back rather than sent. They are listed below with what was missing.
+							</p>
+						} else {
+							<p class="mt-1 text-sm text-slate-500">
+								No event has triggered a message from this automation yet. A send is
+								recorded only when it actually goes out, so an empty list here means
+								"no matching event" — not a broken automation.
+							</p>
+						}
+					</div>
+				} else {
+					<div class="overflow-x-auto">
+						<table class="w-full table-fixed text-left text-sm">
+							<thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-600">
+								<tr>
+									<th class="w-[10%] px-3 py-3 font-medium first:pl-5">When</th>
+									<th class="w-[15%] px-3 py-3 font-medium">Customer</th>
+									<th class="w-[10%] px-3 py-3 font-medium">Phone</th>
+									<th class="w-[11%] px-3 py-3 font-medium">Order</th>
+									<th class="w-[8%] px-3 py-3 font-medium">Status</th>
+									<th class="w-[10%] px-3 py-3 font-medium">Delivered</th>
+									<th class="w-[36%] px-3 py-3 font-medium last:pr-5">Message</th>
+								</tr>
+							</thead>
+							<tbody class="divide-y divide-slate-100">
+								for _, m := range rows {
+									<tr>
+										<td class="px-3 py-3 first:pl-5 text-slate-600">{ historyWhen(m.CreatedAt) }</td>
+										<td class="px-3 py-3 text-slate-900">
+											if m.CustomerName != "" {
+												<span class="block truncate" title={ m.CustomerName }>{ m.CustomerName }</span>
+											} else {
+												<span class="text-slate-500">—</span>
+											}
+											if v := historyVariables(m); v != "" {
+												<span class="mt-0.5 block truncate text-xs text-slate-500" title={ v }>{ v }</span>
+											}
+										</td>
+										<td class="px-3 py-3 font-medium text-slate-900">{ m.RecipientPhone }</td>
+										<td class="px-3 py-3 text-slate-600">
+											if m.ConvertyOrderID != "" {
+												<span class="block truncate" title={ m.ConvertyOrderID }>{ m.ConvertyOrderID }</span>
+											} else {
+												<span class="text-slate-500">—</span>
+											}
+										</td>
+										<td class="px-3 py-3">
+											<span class={ "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium", statusBadgeClass(m.Status) }>{ statusLabel(m.Status) }</span>
+										</td>
+										<td class="px-3 py-3 text-slate-600">{ historyTime(m.DeliveredAt) }</td>
+										<td class="px-3 py-3 text-xs last:pr-5 text-slate-600">
+											if e := historyError(m); e != "" {
+												<span class="block text-rose-700" title={ e }>{ e }</span>
+											} else if m.Status == "queued" {
+												<span class="block text-amber-800">Recorded, but WhatsApp never confirmed it — this send did not complete.</span>
+											} else if b := historyBody(m); b != "" {
+												<span class={ historyBodyClass(len(b)) } title={ b }>{ b }</span>
+											} else if m.Status == "read" {
+												<span class="text-slate-500">Read by the customer</span>
+											} else {
+												<span class="text-slate-500">Accepted by WhatsApp</span>
+											}
+										</td>
+									</tr>
+								}
+							</tbody>
+						</table>
+					</div>
+					if len(rows) == 200 {
+						<div class="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
+							Showing the 200 most recent messages.
+						</div>
+					}
+				}
+				if len(suppressions) > 0 {
+					<div class="rounded-xl border border-amber-200 bg-white">
+						<div class="border-b border-amber-100 px-5 py-4">
+							<div class="flex flex-wrap items-start justify-between gap-3">
+								<div>
+									<h3 class="text-sm font-semibold text-slate-900">Held back — matched, but not sent</h3>
+									<p class="mt-1 text-sm text-slate-600">
+										These events reached this automation, but the message was withheld on purpose:
+										the template places a variable that this order had no value for, and a blank
+										line in the customer's message is worse than no message. Nothing was sent to
+										anyone on this list.
+									</p>
+								</div>
+								<form method="post" action={ templ.SafeURL("/automations/" + a.ID.String() + "/retry-held") } class="shrink-0">
+									<button type="submit"
+										class="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-900 transition hover:bg-amber-100">
+										Send held back now
+									</button>
+								</form>
+							</div>
+						</div>
+						<div class="overflow-x-auto">
+							<table class="w-full table-fixed text-left text-sm">
+								<thead class="bg-amber-50/60 text-xs uppercase tracking-wide text-slate-600">
+									<tr>
+										<th class="w-[14%] px-3 py-3 font-medium first:pl-5">When</th>
+										<th class="w-[22%] px-3 py-3 font-medium">Customer</th>
+										<th class="w-[16%] px-3 py-3 font-medium">Order</th>
+										<th class="w-[20%] px-3 py-3 font-medium">Waiting for</th>
+										<th class="w-[28%] px-3 py-3 font-medium last:pr-5">Why</th>
+									</tr>
+								</thead>
+								<tbody class="divide-y divide-slate-100">
+									for _, s := range suppressions {
+										<tr>
+											<td class="px-3 py-3 first:pl-5 text-slate-600">{ historyWhen(s.CreatedAt) }</td>
+											<td class="px-3 py-3 text-slate-900">
+												if s.CustomerName != "" {
+													<span class="block truncate" title={ s.CustomerName }>{ s.CustomerName }</span>
+												} else {
+													<span class="text-slate-500">—</span>
+												}
+											</td>
+											<td class="px-3 py-3 text-slate-600">
+												if s.OrderID != "" {
+													<span class="block truncate" title={ s.OrderID }>{ s.OrderID }</span>
+												} else {
+													<span class="text-slate-500">—</span>
+												}
+											</td>
+											<td class="px-3 py-3 text-slate-900">
+												if m := suppressionMissing(s); m != "" {
+													<span class="block truncate" title={ m }>{ m }</span>
+												} else {
+													<span class="text-slate-500">—</span>
+												}
+											</td>
+											<td class="px-3 py-3 text-xs last:pr-5 text-slate-600">{ s.Reason }</td>
+										</tr>
+									}
+								</tbody>
+							</table>
+						</div>
+						<div class="border-t border-amber-100 px-5 py-3 text-xs text-slate-500">
+							<span>A held-back send is not an error, and it waits for nothing: no new event will come for an order that has already changed status. Once the missing detail is available, use the button above and it goes out immediately.</span>
+						</div>
+					</div>
+				}
+			</div>
+		</div>
+	}
+}

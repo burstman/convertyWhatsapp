@@ -215,7 +215,10 @@ func (s *Service) templateState(ctx context.Context, shopID, templateID uuid.UUI
 }
 
 // createQueuedMessage reserves the message row (idempotency-safe) before the
-// Meta call, so a crash between check and send never double-sends.
+// Meta call, so a crash between check and send never double-sends. The rendered
+// text is written with it: history is a record of what went out, and a template
+// edited or deleted tomorrow must not be able to change what this row says the
+// customer received.
 func (s *Service) createQueuedMessage(ctx context.Context, req SendRequest, t TemplateState) (uuid.UUID, error) {
 	varsJSON, err := json.Marshal(req.Variables)
 	if err != nil {
@@ -226,11 +229,14 @@ func (s *Service) createQueuedMessage(ctx context.Context, req SendRequest, t Te
 	err = s.pool.QueryRow(ctx, `
 		INSERT INTO messages (
 			shop_id, customer_id, template_id, converty_order_id, recipient_phone,
-			template_variables, idempotency_key, status
-		) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, 'queued')
+			template_variables, idempotency_key, automation_id, status, body_text
+		) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7,
+			NULLIF($8::uuid, '00000000-0000-0000-0000-000000000000'), 'queued',
+			NULLIF($9, ''))
 		RETURNING id`,
 		req.ShopID, req.CustomerID, t.ID, req.ConvertyOrderID,
-		customer_phone(ctx, s, req), varsJSON, req.IdempotencyKey,
+		customer_phone(ctx, s, req), varsJSON, req.IdempotencyKey, req.AutomationID,
+		RenderTemplateBody(t.RawComponents, req.Variables),
 	).Scan(&id)
 	return id, err
 }

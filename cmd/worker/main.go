@@ -2,13 +2,16 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
 
+	"whatsappconverty/internal/automations"
 	"whatsappconverty/internal/config"
 	"whatsappconverty/internal/database"
 	"whatsappconverty/internal/logutil"
@@ -36,6 +39,7 @@ func main() {
 	defer pool.Close()
 
 	svc := whatsapp.NewService(cfg, pool, logger)
+	auto := automations.NewProcessor(cfg, pool, logger, svc)
 
 	srv := asynq.NewServer(redisOpt, asynq.Config{
 		Concurrency: 10,
@@ -44,7 +48,7 @@ func main() {
 	})
 
 	mux := asynq.NewServeMux()
-	registerHandlers(mux, svc)
+	registerHandlers(mux, svc, auto)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -60,8 +64,40 @@ func main() {
 	srv.Shutdown()
 }
 
-func registerHandlers(mux *asynq.ServeMux, svc *whatsapp.Service) {
+func registerHandlers(mux *asynq.ServeMux, svc *whatsapp.Service, auto *automations.Processor) {
 	mux.HandleFunc(queue.TaskPurgeMarketingTemplate, svc.HandlePurgeMarketingTemplate)
+	mux.HandleFunc(queue.TaskSendWhatsAppTemplate, gateAutomation(auto, svc.HandleSendWhatsAppTemplate, slog.Default()))
+}
+
+// gateAutomation re-checks an automation before its queued send is delivered.
+// Pausing switches off what fires next, but the job was already parked in the
+// queue — a scheduled send can sit there for hours — so without this check a
+// pause would only stop future events and the pending message would still go
+// out. Non-automation sends pass through untouched.
+func gateAutomation(auto *automations.Processor, next func(context.Context, *asynq.Task) error, log *slog.Logger) func(context.Context, *asynq.Task) error {
+	return func(ctx context.Context, task *asynq.Task) error {
+		var job whatsapp.SendWhatsAppTemplateJob
+		if err := json.Unmarshal(task.Payload(), &job); err != nil {
+			return next(ctx, task)
+		}
+		if job.AutomationID == uuid.Nil {
+			return next(ctx, task)
+		}
+
+		active, err := auto.AutomationEnabled(ctx, job.AutomationID)
+		if err != nil {
+			log.Warn("automation gate: lookup failed, sending anyway",
+				"automation_id", job.AutomationID, "shop_id", job.ShopID, "error", err)
+			return next(ctx, task)
+		}
+		if !active {
+			log.Info("queued send dropped: automation paused or deleted",
+				"automation_id", job.AutomationID, "shop_id", job.ShopID,
+				"customer_id", job.CustomerID, "template_id", job.TemplateID)
+			return nil
+		}
+		return next(ctx, task)
+	}
 }
 
 type asynqLogger struct{ log *slog.Logger }

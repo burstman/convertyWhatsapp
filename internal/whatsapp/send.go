@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -93,6 +94,10 @@ type SendRequest struct {
 	Purpose         string
 	Variables       map[string]string
 	IdempotencyKey  string
+	// AutomationID attributes the message to the automation that fired it, so
+	// the merchant can read one automation's send history. uuid.Nil means the
+	// send was not automation-driven (API, test), and stays unlinked.
+	AutomationID uuid.UUID
 }
 
 // SendResult reports the outcome of an accepted send.
@@ -276,6 +281,59 @@ func countTemplateVariablesRaw(raw []byte) int {
 	return len(seen)
 }
 
+// RenderTemplateBody returns the message text a set of variables produces, for
+// the history page. The approved template body is fixed at send time, so a
+// snapshot of it is exactly what the customer received. The history shows the
+// stored copy rather than re-deriving it, because a template can be edited or
+// deleted afterwards and a re-derived history would then show a message nobody
+// was ever sent.
+func RenderTemplateBody(raw []byte, vars map[string]string) string {
+	var parts []string
+	for _, c := range decodeMetaComponents(raw) {
+		switch metaCompType(c) {
+		case "BODY", "HEADER":
+			text := metaCompText(c)
+			if strings.TrimSpace(text) == "" {
+				continue
+			}
+			parts = append(parts, fillPlaceholders(text, vars))
+		}
+	}
+	// Meta renders consecutive body components as separate paragraphs. Stored
+	// bodies keep whatever line ending Converty or the editor wrote, which is
+	// usually CRLF; normalising here keeps the snapshot readable in the page and
+	// in a copy-paste, and the customer sees a line break either way.
+	body := strings.Join(parts, "\n\n")
+	return strings.ReplaceAll(body, "\r\n", "\n")
+}
+
+// fillPlaceholders substitutes {{1}}-style placeholders from the resolved
+// variable map. A placeholder with no entry in that map becomes the same
+// neutral dash the automation builder pads a legacy template with, so the
+// snapshot reads like the message that went out rather than showing a gap.
+func fillPlaceholders(text string, vars map[string]string) string {
+	var b strings.Builder
+	for i := 0; i < len(text); {
+		if text[i] == '{' && i+1 < len(text) && text[i+1] == '{' {
+			if end := strings.Index(text[i:], "}}"); end > 0 {
+				key := text[i+2 : i+end]
+				if n, err := strconv.Atoi(strings.TrimSpace(key)); err == nil {
+					if v, ok := vars[strconv.Itoa(n)]; ok {
+						b.WriteString(v)
+					} else {
+						b.WriteString("—")
+					}
+					i += end + 2
+					continue
+				}
+			}
+		}
+		b.WriteByte(text[i])
+		i++
+	}
+	return b.String()
+}
+
 // buildComponents converts the stored template components into the Meta send
 // shape, substituting positional variables in body/header text. URL buttons
 // receive the trailing {{1}} parameter set Meta requires.
@@ -408,4 +466,100 @@ func wrapMetaError(err error) error {
 		return NewSendRejection(ErrCodeMetaAPIError, apiErr.Message)
 	}
 	return NewSendRejection(ErrCodeMetaAPIError, err.Error())
+}
+
+// TestTemplateRequest is a merchant-initiated test send of one template to
+// an arbitrary WhatsApp number. It deliberately skips the customer/consent
+// gate (there is no customer context) but still enforces the merchant and
+// template gates so a broken setup fails loudly here, not on a real event.
+type TestTemplateRequest struct {
+	ShopID     uuid.UUID
+	TemplateID uuid.UUID
+	To         string
+	Variables  map[string]string
+}
+
+var phonePattern = regexp.MustCompile(`^\+?[0-9]{8,15}$`)
+
+// SendTemplateTest delivers a template to the given number for testing. The
+// message is recorded in the ledger with no customer attached. Any refusal
+// surfaces as *SendRejection.
+//
+// A test is explicitly initiated by the merchant on an already-connected
+// sender, so the merchant onboarding flags (service enabled / terms accepted)
+// are intentionally not required here; the status, template and credential
+// gates below still catch genuinely broken setups.
+func (s *Service) SendTemplateTest(ctx context.Context, req TestTemplateRequest) (*SendResult, error) {
+	to := strings.Join(strings.Fields(req.To), "")
+	if !phonePattern.MatchString(to) {
+		return nil, NewSendRejection(ErrCodeTemplateVariableInvalid, "invalid phone number — use international format with country code, e.g. +21624118849")
+	}
+
+	template, err := s.templateState(ctx, req.ShopID, req.TemplateID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, NewSendRejection(ErrCodeTemplateNotFound, "template not found for this merchant")
+		}
+		return nil, err
+	}
+	if template.ApprovalStatus != "approved" {
+		return nil, NewSendRejection(ErrCodeTemplateNotApproved, "template is not approved ("+template.ApprovalStatus+")")
+	}
+	if template.MarketingFlagged {
+		return nil, NewSendRejection(ErrCodeTemplateMarketingBlocked, "meta treats this template as marketing content and it can never be sent")
+	}
+	if err := validateVariables(template, req.Variables); err != nil {
+		return nil, err
+	}
+
+	if s.rate != nil {
+		if err := s.rate.Allow(ctx, req.ShopID); err != nil {
+			return nil, err
+		}
+	}
+
+	components, err := buildComponents(template.RawComponents, req.Variables)
+	if err != nil {
+		return nil, err
+	}
+
+	varsJSON, err := json.Marshal(req.Variables)
+	if err != nil {
+		return nil, err
+	}
+
+	var msgID uuid.UUID
+	err = s.pool.QueryRow(ctx, `
+		INSERT INTO messages (
+			shop_id, customer_id, template_id, recipient_phone,
+			template_variables, status, body_text
+		) VALUES ($1, NULL, $2, $3, $4::jsonb, 'queued', NULLIF($5, ''))
+		RETURNING id`,
+		req.ShopID, req.TemplateID, to, varsJSON,
+		RenderTemplateBody(template.RawComponents, req.Variables),
+	).Scan(&msgID)
+	if err != nil {
+		return nil, err
+	}
+
+	if s.cfg.MetaSystemUserToken == "" || s.cfg.MetaPhoneNumberID == "" {
+		_ = s.markMessageFailed(ctx, msgID, ErrCodeMetaAPIError, "platform meta credentials not configured")
+		return nil, NewSendRejection(ErrCodeMetaAPIError, "platform meta credentials not configured")
+	}
+
+	metaID, sendErr := s.SendTemplate(ctx, s.cfg.MetaSystemUserToken, s.cfg.MetaPhoneNumberID,
+		to, template.Name, template.Language, components,
+		MessagingAccountParam(s.cfg.MetaMessagingAccountID))
+	if sendErr != nil {
+		_ = s.markMessageFailed(ctx, msgID, ErrCodeMetaAPIError, sendErr.Error())
+		return nil, wrapMetaError(sendErr)
+	}
+
+	if err := s.markMessageSent(ctx, msgID, metaID); err != nil {
+		s.log.Error("whatsapp: could not mark test message sent", "error", err)
+	}
+	s.log.Info("whatsapp test message sent",
+		"template", template.Name, "to", to, "meta_message_id", metaID)
+
+	return &SendResult{MessageID: msgID, MetaMessageID: metaID, Status: "sent"}, nil
 }
