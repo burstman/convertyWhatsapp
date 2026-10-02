@@ -107,7 +107,6 @@ func (a *App) InitializeRoutes(r *chi.Mux) {
 		pr.Get("/templates", kit.Handler(a.handleTemplates))
 		pr.Post("/templates/create", kit.Handler(a.handleTemplateCreate))
 		pr.Get("/templates/refresh", kit.Handler(a.handleTemplateRefresh))
-		pr.Get("/messages", kit.Handler(a.handleMessages))
 		pr.Get("/settings", kit.Handler(a.handleWhatsappSettings))
 		pr.Get("/whatsapp/onboard", kit.Handler(a.handleWhatsappOnboard))
 		pr.Post("/whatsapp/onboard", kit.Handler(a.handleWhatsappOnboardPost))
@@ -122,9 +121,6 @@ func (a *App) InitializeRoutes(r *chi.Mux) {
 		pr.Post("/api/whatsapp/revoke", kit.Handler(a.handleAPIRevokeConsent))
 		pr.Get("/api/whatsapp/templates", kit.Handler(a.handleAPITemplates))
 		pr.Post("/api/whatsapp/templates", kit.Handler(a.handleAPICreateTemplate))
-		pr.Get("/api/whatsapp/messages", kit.Handler(a.handleAPIMessages))
-		pr.Post("/api/whatsapp/messages", kit.Handler(a.handleAPISendMessage))
-		pr.Get("/api/whatsapp/messages/{id}", kit.Handler(a.handleAPIMessage))
 	})
 
 	r.NotFound(kit.Handler(a.handleNotFound))

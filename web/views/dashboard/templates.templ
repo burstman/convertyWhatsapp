@@ -187,3 +187,17 @@ type TemplateFlash struct {
 	Error string
 	Info  string
 }
+
+templ ApprovalBadge(status string) {
+	if status == "approved" {
+		<span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">Approved</span>
+	} else if status == "rejected" {
+		<span class="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700">Rejected</span>
+	} else if status == "pending" {
+		<span class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">Pending review</span>
+	} else if status == "deleted" {
+		<span class="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600">Deleted</span>
+	} else {
+		<span class="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{ status }</span>
+	}
+}
