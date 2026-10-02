@@ -6,15 +6,26 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Connect opens a PostgreSQL connection pool and verifies connectivity.
+//
+// DefaultQueryExecMode is overridden to CacheDescribe: the pgx default caches
+// every query as a named server-side prepared statement, which breaks behind
+// poolers (Neon runs PgBouncer in transaction mode) — the pool re-parses under
+// a statement name the backend already holds and the server aborts the
+// connection with FATAL: prepared statement name is already in use (08P01).
+// CacheDescribe still uses the extended protocol with binary results and caches
+// the parameter/result type info client-side, but leaves no named prepared
+// statement behind, so nothing can collide.
 func Connect(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 	cfg, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("parse database url: %w", err)
 	}
+	cfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeCacheDescribe
 
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
