@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/hibiken/asynq"
 
 	"whatsappconverty/internal/queue"
 )
@@ -22,16 +21,13 @@ type PurgeMarketingTemplateJob struct {
 }
 
 // enqueueUnscheduledPurges queues the purge job for every template that is
-// flagged as marketing but has no scheduled purge yet. The task fires after
-// the configured delay; asynq's Unique option dedupes re-submissions of the
-// same job. When no asynq client exists (no Redis), the lazy purge path in
-// PurgeExpiredMarketing still cleans up on the next templates page load.
+// flagged as marketing but has no scheduled purge yet. The job fires after the
+// configured delay, keyed on the flagging episode so re-submitting the same
+// template cannot pile up duplicate purges. PurgeExpiredMarketing is the lazy
+// path that cleans up on the next templates page load even if a job is lost.
 func (s *Service) enqueueUnscheduledPurges(ctx context.Context) error {
-	if s.queue == nil {
-		return nil
-	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, shop_id, meta_template_name, language
+		SELECT id, shop_id, meta_template_name, language, marketing_flagged_at
 		FROM templates
 		WHERE marketing_flagged AND purge_scheduled_at IS NULL`)
 	if err != nil {
@@ -39,10 +35,14 @@ func (s *Service) enqueueUnscheduledPurges(ctx context.Context) error {
 	}
 	defer rows.Close()
 
-	var jobs []PurgeMarketingTemplateJob
+	type unscheduled struct {
+		PurgeMarketingTemplateJob
+		FlaggedAt time.Time
+	}
+	var jobs []unscheduled
 	for rows.Next() {
-		var j PurgeMarketingTemplateJob
-		if err := rows.Scan(&j.TemplateID, &j.ShopID, &j.Name, &j.Language); err != nil {
+		var j unscheduled
+		if err := rows.Scan(&j.TemplateID, &j.ShopID, &j.Name, &j.Language, &j.FlaggedAt); err != nil {
 			return err
 		}
 		jobs = append(jobs, j)
@@ -52,7 +52,7 @@ func (s *Service) enqueueUnscheduledPurges(ctx context.Context) error {
 	}
 
 	for _, j := range jobs {
-		if err := s.enqueuePurge(ctx, j); err != nil {
+		if err := s.enqueuePurge(ctx, j.PurgeMarketingTemplateJob, j.FlaggedAt); err != nil {
 			s.log.Warn("marketing purge enqueue failed", "template_id", j.TemplateID, "error", err)
 			continue
 		}
@@ -64,18 +64,21 @@ func (s *Service) enqueueUnscheduledPurges(ctx context.Context) error {
 	return nil
 }
 
-func (s *Service) enqueuePurge(ctx context.Context, j PurgeMarketingTemplateJob) error {
+// enqueuePurge parks one purge until the marketing delay has passed. The dedupe
+// key names the flagging episode (template id plus when it was flagged) so a
+// later re-flag of the same template can still schedule its own purge.
+func (s *Service) enqueuePurge(ctx context.Context, j PurgeMarketingTemplateJob, flaggedAt time.Time) error {
 	payload, err := json.Marshal(j)
 	if err != nil {
 		return err
 	}
-	task := asynq.NewTask(queue.TaskPurgeMarketingTemplate, payload)
-	_, err = s.queue.Enqueue(task,
-		asynq.ProcessIn(s.cfg.MarketingPurgeDelay),
-		asynq.Unique(s.cfg.MarketingPurgeDelay*4), // collapse re-submits of the same row
-		asynq.Retention(24*time.Hour),
-	)
-	return err
+	return queue.Enqueue(ctx, s.pool, queue.Params{
+		Kind:      queue.TaskPurgeMarketingTemplate,
+		ShopID:    j.ShopID,
+		Payload:   payload,
+		RunAt:     time.Now().Add(s.cfg.MarketingPurgeDelay),
+		DedupeKey: fmt.Sprintf("%s:%d", j.TemplateID, flaggedAt.Unix()),
+	})
 }
 
 // PurgeExpiredMarketing marks every flagged template whose purge deadline has
@@ -117,13 +120,13 @@ func (s *Service) PurgeExpiredMarketing(ctx context.Context) (int, error) {
 	return len(expired), nil
 }
 
-// HandlePurgeMarketingTemplate is the asynq worker handler for the delayed
-// purge job. It is safe to run repeatedly: missing rows or templates that are
-// no longer flagged are skipped.
-func (s *Service) HandlePurgeMarketingTemplate(ctx context.Context, task *asynq.Task) error {
+// HandlePurgeMarketingTemplate is the queue handler for the delayed purge job.
+// It is safe to run repeatedly: missing rows or templates that are no longer
+// flagged are skipped.
+func (s *Service) HandlePurgeMarketingTemplate(ctx context.Context, payload []byte) error {
 	var j PurgeMarketingTemplateJob
-	if err := json.Unmarshal(task.Payload(), &j); err != nil {
-		return err
+	if err := json.Unmarshal(payload, &j); err != nil {
+		return queue.Permanent(fmt.Errorf("whatsapp: decode purge job: %w", err))
 	}
 
 	var stillFlagged bool

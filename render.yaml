@@ -1,19 +1,12 @@
 # Render Blueprint for Converty WhatsApp Notification Platform.
-# Creates: web service, background worker, and Redis.
+# Creates: web service + background worker.
 # PostgreSQL is provided by Neon (external) — set DATABASE_URL manually.
+# The job queue and send rate limiter live in Postgres, so no Redis instance
+# is provisioned.
 #
 # All secrets are provided via Render environment variables (not stored here).
 
 services:
-  - type: redis
-    name: converty-whatsapp-redis
-    region: oregon
-    plan: free # change to a paid/production plan when ready
-    maxmemoryPolicy: noeviction
-    ipAllowList: # public access is fine for the free test tier; tighten before production
-      - source: 0.0.0.0/0
-        description: everywhere
-
   - type: web
     name: converty-whatsapp-api
     runtime: go
@@ -42,11 +35,6 @@ services:
         sync: false # openssl rand -hex 32; keeps the same value across restarts
       - key: DATABASE_URL
         sync: false # paste your Neon connection string (use the direct, non-pooled one)
-      - key: REDIS_URL
-        fromService:
-          name: converty-whatsapp-redis
-          type: redis
-          property: connectionString
       - key: SUPERKIT_SECRET
         sync: false # set manually in the Render dashboard
       - key: META_SYSTEM_USER_TOKEN
@@ -69,10 +57,11 @@ services:
         value: production
       - key: DATABASE_URL
         sync: false # paste your Neon connection string (use the direct, non-pooled one)
-      - key: REDIS_URL
-        fromService:
-          name: converty-whatsapp-redis
-          type: redis
-          property: connectionString
       - key: SUPERKIT_SECRET
         sync: false
+      - key: META_SYSTEM_USER_TOKEN
+        sync: false # same long-lived platform token as the web service
+      - key: META_PHONE_NUMBER_ID
+        sync: false
+      - key: META_MESSAGING_ACCOUNT_ID
+        sync: false # defaults in code to 2883242225383967; set only when it changes

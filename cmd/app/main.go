@@ -17,6 +17,7 @@ import (
 	"whatsappconverty/internal/database"
 	"whatsappconverty/internal/logutil"
 	"whatsappconverty/internal/server"
+	"whatsappconverty/internal/worker"
 	"whatsappconverty/web/static"
 )
 
@@ -55,6 +56,17 @@ func main() {
 			logger.Error("migrations failed", "error", err)
 			os.Exit(1)
 		}
+	}
+
+	// Run the job processor in-process as well as in the standalone worker: the
+	// queue is Postgres-backed and claims are leased, so two runners are safe, and
+	// the API stays able to deliver queued sends even if the worker service is
+	// stopped on a free tier.
+	workerServ, werr := worker.Start(cfg, logger)
+	if werr != nil {
+		logger.Error("background worker failed to start; inbox/webhooks keep working, queued sends will wait", "error", werr)
+	} else {
+		defer workerServ.Shutdown()
 	}
 
 	app := server.New(cfg, logger, pool)
