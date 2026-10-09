@@ -8,8 +8,8 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"whatsappconverty/internal/automations"
 	"whatsappconverty/internal/auth"
+	"whatsappconverty/internal/automations"
 	"whatsappconverty/internal/config"
 	"whatsappconverty/internal/converty"
 	"whatsappconverty/internal/dashboard"
@@ -19,14 +19,14 @@ import (
 
 // App wires the dependencies for the web/API process and owns the HTTP router.
 type App struct {
-	Cfg       config.Config
-	Log       *slog.Logger
-	Pool      *pgxpool.Pool
-	Auth      *auth.Service
-	Shops     *shops.Repository
-	Dashboard *dashboard.Repository
-	Converty  *converty.Service
-	WhatsApp  *whatsapp.Service
+	Cfg         config.Config
+	Log         *slog.Logger
+	Pool        *pgxpool.Pool
+	Auth        *auth.Service
+	Shops       *shops.Repository
+	Dashboard   *dashboard.Repository
+	Converty    *converty.Service
+	WhatsApp    *whatsapp.Service
 	Automations *automations.Processor
 }
 
@@ -93,6 +93,7 @@ func (a *App) InitializeRoutes(r *chi.Mux) {
 		pr.Post("/integrations/{id}/test", kit.Handler(a.handleIntegrationTest))
 		pr.Post("/integrations/{id}/update", kit.Handler(a.handleIntegrationUpdate))
 		pr.Post("/integrations/{id}/activate", kit.Handler(a.handleIntegrationActivate))
+		pr.Get("/integrations/{id}/delete", kit.Handler(a.handleIntegrationDeletePreview))
 		pr.Post("/integrations/{id}/delete", kit.Handler(a.handleIntegrationDelete))
 		pr.Get("/automations", kit.Handler(a.handleAutomations))
 		pr.Get("/automations/new", kit.Handler(a.handleAutomationEdit))
@@ -107,6 +108,7 @@ func (a *App) InitializeRoutes(r *chi.Mux) {
 		pr.Get("/templates", kit.Handler(a.handleTemplates))
 		pr.Post("/templates/create", kit.Handler(a.handleTemplateCreate))
 		pr.Get("/templates/refresh", kit.Handler(a.handleTemplateRefresh))
+		pr.Get("/whatsapp", kit.Handler(a.handleWhatsappStatus))
 		pr.Get("/settings", kit.Handler(a.handleWhatsappSettings))
 		pr.Get("/whatsapp/onboard", kit.Handler(a.handleWhatsappOnboard))
 		pr.Post("/whatsapp/onboard", kit.Handler(a.handleWhatsappOnboardPost))

@@ -13,12 +13,47 @@ import (
 	vsettings "whatsappconverty/web/views/settings"
 )
 
-// handleWhatsappSettings renders the WhatsApp settings page. This is a legacy
-// view that predates the shared single-WABA model: template listings belong to
-// the shop-scoped /templates page only. A shop must never see the platform's
-// account-level templates (other merchants' content), so no template list is
-// rendered here.
+// requireOwner restricts a handler to the shop owner. Non-owners receive the
+// platform's 404 page so owner-only pages do not reveal that they exist.
+func (a *App) requireOwner(k *kit.Kit) error {
+	if auth.FromKit(k).User.IsOwner() {
+		return nil
+	}
+	return a.handleNotFound(k)
+}
+
+// handleWhatsappStatus renders the client's read-only WhatsApp status: the
+// state of the platform's shared service for this shop and the number
+// customers will see the message from. It exposes no Meta credentials and
+// offers no configuration — the sending identity is centrally owned, so a
+// merchant has nothing to tune.
+func (a *App) handleWhatsappStatus(k *kit.Kit) error {
+	principal := auth.FromKit(k)
+	shop, err := a.Shops.GetByID(k.Request.Context(), principal.User.ShopID)
+	if err != nil && err != shops.ErrNotFound {
+		return err
+	}
+
+	page := viewshared.Page{
+		Title:    "WhatsApp",
+		Active:   "whatsapp",
+		ShopName: shop.Name,
+		UserName: principal.User.Name,
+		IsOwner:  principal.User.IsOwner(),
+	}
+	return k.Render(vsettings.StatusCard(page, shop, a.Cfg.MetaPhoneNumber, a.Cfg.MetaVerifiedName))
+}
+
+// handleWhatsappSettings renders the (owner-only) WhatsApp settings page. This
+// is a legacy view that predates the shared single-WABA model: template
+// listings belong to the shop-scoped /templates page only. A shop must never
+// see the platform's account-level templates (other merchants' content), so no
+// template list is rendered here.
 func (a *App) handleWhatsappSettings(k *kit.Kit) error {
+	if err := a.requireOwner(k); err != nil {
+		return err
+	}
+
 	principal := auth.FromKit(k)
 	shop, err := a.Shops.GetByID(k.Request.Context(), principal.User.ShopID)
 	if err != nil && err != shops.ErrNotFound {
@@ -30,6 +65,7 @@ func (a *App) handleWhatsappSettings(k *kit.Kit) error {
 		Active:   "settings",
 		ShopName: shop.Name,
 		UserName: principal.User.Name,
+		IsOwner:  principal.User.IsOwner(),
 	}
 
 	integ, err := a.WhatsApp.Integration(k.Request.Context(), principal.User.ShopID)
@@ -44,8 +80,12 @@ func (a *App) handleWhatsappSettings(k *kit.Kit) error {
 }
 
 // handleWhatsappConnect stores the shop's Meta WhatsApp credentials after a
-// live sanity check of the token and ids against the Graph API.
+// live sanity check of the token and ids against the Graph API. Owner-only.
 func (a *App) handleWhatsappConnect(k *kit.Kit) error {
+	if err := a.requireOwner(k); err != nil {
+		return err
+	}
+
 	principal := auth.FromKit(k)
 
 	ctx := k.Request.Context()
@@ -90,8 +130,12 @@ func (a *App) handleWhatsappConnect(k *kit.Kit) error {
 	return k.Redirect(http.StatusSeeOther, "/settings?connect=success")
 }
 
-// handleWhatsappDisconnect removes the shop's WhatsApp credentials.
+// handleWhatsappDisconnect removes the shop's WhatsApp credentials. Owner-only.
 func (a *App) handleWhatsappDisconnect(k *kit.Kit) error {
+	if err := a.requireOwner(k); err != nil {
+		return err
+	}
+
 	principal := auth.FromKit(k)
 
 	if err := a.WhatsApp.DeleteIntegration(k.Request.Context(), principal.User.ShopID); err != nil {
@@ -102,10 +146,15 @@ func (a *App) handleWhatsappDisconnect(k *kit.Kit) error {
 	return k.Redirect(http.StatusSeeOther, "/settings?connect=disconnected")
 }
 
-// handleWhatsappOnboard renders the WhatsApp enable page: the merchant opts
-// into the platform's shared number, records a contact phone, and accepts the
-// service terms (which include the customer opt-in obligation).
+// handleWhatsappOnboard renders the WhatsApp enable page: the owner opts into
+// the platform's shared number, records a contact phone, and accepts the
+// service terms (which include the customer opt-in obligation). Owner-only:
+// accepting the terms is an audited legal commitment.
 func (a *App) handleWhatsappOnboard(k *kit.Kit) error {
+	if err := a.requireOwner(k); err != nil {
+		return err
+	}
+
 	principal := auth.FromKit(k)
 
 	shop, err := a.Shops.GetByID(k.Request.Context(), principal.User.ShopID)
@@ -118,14 +167,19 @@ func (a *App) handleWhatsappOnboard(k *kit.Kit) error {
 		Active:   "settings",
 		ShopName: shop.Name,
 		UserName: principal.User.Name,
+		IsOwner:  principal.User.IsOwner(),
 	}
 	return k.Render(vsettings.Onboarding(page, shop))
 }
 
-// handleWhatsappOnboardPost records the merchant's opt-in: terms accepted,
-// service enabled, contact phone saved. No Meta credentials are handled here —
-// sending happens through the platform's centrally owned number.
+// handleWhatsappOnboardPost records the owner's opt-in: terms accepted, service
+// enabled, contact phone saved. No Meta credentials are handled here — sending
+// happens through the platform's centrally owned number. Owner-only.
 func (a *App) handleWhatsappOnboardPost(k *kit.Kit) error {
+	if err := a.requireOwner(k); err != nil {
+		return err
+	}
+
 	principal := auth.FromKit(k)
 
 	if k.Request.FormValue("accept_terms") != "1" {
@@ -139,5 +193,5 @@ func (a *App) handleWhatsappOnboardPost(k *kit.Kit) error {
 	}
 
 	a.Log.Info("whatsapp service enabled", "shop_id", principal.User.ShopID, "phone", phone)
-	return k.Redirect(http.StatusSeeOther, "/settings?connect=success")
+	return k.Redirect(http.StatusSeeOther, "/whatsapp?enabled=1")
 }

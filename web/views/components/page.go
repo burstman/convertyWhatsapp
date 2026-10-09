@@ -6,6 +6,9 @@ type Page struct {
 	Active   string
 	ShopName string
 	UserName string
+	// IsOwner lets the shell render owner-only navigation (the WhatsApp
+	// settings link) without the handlers duplicating the role check.
+	IsOwner bool
 }
 
 func (p Page) ActiveClass(section string) string {

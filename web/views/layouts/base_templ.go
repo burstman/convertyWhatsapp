@@ -146,9 +146,15 @@ func Shell(page components.Page) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = navLink(NavItem{"Settings", "/settings", "settings"}, page).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = navLink(NavItem{"WhatsApp", "/whatsapp", "whatsapp"}, page).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
+		}
+		if page.IsOwner {
+			templ_7745c5c3_Err = navLink(NavItem{"Settings", "/settings", "settings"}, page).Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
 		}
 		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</nav></aside><div class=\"fixed inset-0 z-30 bg-black/50 lg:hidden\" :class=\"sidebarOpen ? '' : 'hidden'\"></div><div class=\"flex min-w-0 flex-1 flex-col\"><header class=\"flex h-16 items-center justify-between border-b border-slate-200 bg-white px-4 sm:px-6\"><div class=\"flex items-center gap-3\"><button type=\"button\" class=\"rounded-md p-2 text-slate-600 hover:bg-slate-100 lg:hidden\" @click=\"sidebarOpen = true\" aria-label=\"Open menu\"><svg class=\"h-5 w-5\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M4 6h16M4 12h16M4 18h16\"></path></svg></button><h1 class=\"text-lg font-semibold text-slate-900\">")
 		if templ_7745c5c3_Err != nil {
@@ -157,7 +163,7 @@ func Shell(page components.Page) templ.Component {
 		var templ_7745c5c3_Var8 string
 		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(page.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/layouts/base.templ`, Line: 55, Col: 68}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/layouts/base.templ`, Line: 58, Col: 68}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 		if templ_7745c5c3_Err != nil {
@@ -170,7 +176,7 @@ func Shell(page components.Page) templ.Component {
 		var templ_7745c5c3_Var9 string
 		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(page.ShopName)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/layouts/base.templ`, Line: 58, Col: 75}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/layouts/base.templ`, Line: 61, Col: 75}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 		if templ_7745c5c3_Err != nil {
@@ -237,7 +243,7 @@ func AuthLayout(title string) templ.Component {
 		var templ_7745c5c3_Var11 string
 		templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/layouts/base.templ`, Line: 79, Col: 17}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/layouts/base.templ`, Line: 82, Col: 17}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 		if templ_7745c5c3_Err != nil {

@@ -57,6 +57,7 @@ func (a *App) handleOverview(k *kit.Kit) error {
 		Title:    "Overview",
 		ShopName: shop.Name,
 		UserName: principal.User.Name,
+		IsOwner:  principal.User.IsOwner(),
 	}
 
 	return k.Render(vdashboard.Overview(page, stats))
@@ -115,6 +116,7 @@ func (a *App) handleTemplates(k *kit.Kit) error {
 		Title:    "Templates",
 		ShopName: shop.Name,
 		UserName: principal.User.Name,
+		IsOwner:  principal.User.IsOwner(),
 	}
 	return k.Render(vdashboard.TemplatesPage(page, templates, flash))
 }
@@ -131,6 +133,7 @@ func (a *App) handlePlaceholder(section string) func(*kit.Kit) error {
 			Title:    sectionTitle(section),
 			ShopName: shop.Name,
 			UserName: principal.User.Name,
+			IsOwner:  principal.User.IsOwner(),
 		}
 		return k.Render(vdashboard.Placeholder(page, section))
 	}

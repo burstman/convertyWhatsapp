@@ -6,6 +6,15 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// User roles. The shop's first user (created at registration) is the owner;
+// the row defaults to 'owner' so existing accounts need no backfill. Owners
+// administer the shop — today that means the WhatsApp settings and the
+// one-time enable/terms flow. Members get the day-to-day features only.
+const (
+	RoleOwner  = "owner"
+	RoleMember = "member"
+)
+
 // User is a merchant account. Users belong to exactly one shop.
 type User struct {
 	ID       uuid.UUID `json:"id"`
@@ -15,6 +24,12 @@ type User struct {
 	Role     string    `json:"role"`
 	Password string    `json:"-"`
 }
+
+// IsOwner reports whether the user administers the shop.
+func (u User) IsOwner() bool { return u.Role == RoleOwner }
+
+// IsMember reports whether the user is a day-to-day (non-admin) member.
+func (u User) IsMember() bool { return u.Role == RoleMember }
 
 // Auth is the authenticated principal for a request. It implements
 // superkit's kit.Auth interface and carries the shop context.

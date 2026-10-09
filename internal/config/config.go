@@ -48,6 +48,12 @@ type Config struct {
 	MetaWaacID              string
 	MetaBusinessPortfolioID string
 
+	// MetaPhoneNumber and MetaVerifiedName are the human-facing sending identity
+	// customers see on the notification. They are display-only (rendered on the
+	// client's read-only WhatsApp status page) and never used to send.
+	MetaPhoneNumber  string
+	MetaVerifiedName string
+
 	// MetaWebhookVerifyToken is the hub.verify_token the Meta app must echo
 	// when subscribing to the platform webhook endpoint.
 	MetaWebhookVerifyToken string
@@ -88,6 +94,8 @@ func Load() Config {
 		MetaMessagingAccountID:  getenv("META_MESSAGING_ACCOUNT_ID", "2883242225383967"),
 		MetaWaacID:              getenv("META_WAAC_ID", ""),
 		MetaBusinessPortfolioID: getenv("META_BUSINESS_PORTFOLIO_ID", ""),
+		MetaPhoneNumber:         getenv("META_PHONE_NUMBER", "+216 24 118 849"),
+		MetaVerifiedName:        getenv("META_VERIFIED_NAME", "TOP DEALS001"),
 		MetaWebhookVerifyToken:  getenv("META_WEBHOOK_VERIFY_TOKEN", ""),
 		MetaAppSecret:           getenv("META_APP_SECRET", ""),
 		MarketingPurgeDelay:     getenvDuration("MARKETING_PURGE_DELAY", 15*time.Minute),

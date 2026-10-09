@@ -120,13 +120,10 @@ templ IntegrationCard(integration converty.Integration) {
 				</form>
 			</details>
 
-			<form method="post" action={ "/integrations/" + integration.ID.String() + "/delete" }
-				onsubmit="return confirm('Delete this integration? Its Converty webhook subscriptions will be removed and order updates will stop.')">
-				<button type="submit"
-					class="inline-flex items-center gap-2 rounded-lg border border-rose-200 px-3 py-1.5 text-sm font-medium text-rose-600 transition hover:border-rose-300 hover:bg-rose-50">
-					Delete
-				</button>
-			</form>
+			<a href={ "/integrations/" + integration.ID.String() + "/delete" }
+				class="inline-flex items-center gap-2 rounded-lg border border-rose-200 px-3 py-1.5 text-sm font-medium text-rose-600 transition hover:border-rose-300 hover:bg-rose-50">
+				Delete
+			</a>
 		</div>
 	</div>
 }

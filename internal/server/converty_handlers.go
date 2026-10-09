@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/anthdm/superkit/kit"
@@ -18,6 +19,7 @@ import (
 	"whatsappconverty/internal/auth"
 	"whatsappconverty/internal/automations"
 	"whatsappconverty/internal/converty"
+	"whatsappconverty/internal/shops"
 	viewshared "whatsappconverty/web/views/components"
 	vdashboard "whatsappconverty/web/views/dashboard"
 )
@@ -115,7 +117,12 @@ func (a *App) handleIntegrations(k *kit.Kit) error {
 	case "deactivated":
 		flash.Info = "Integration deactivated — new order events will not be processed until you activate it again."
 	case "deleted":
-		flash.Info = "Integration deleted — its webhook subscriptions were removed."
+		removed, _ := strconv.Atoi(k.Request.URL.Query().Get("removed"))
+		if removed > 0 {
+			flash.Info = fmt.Sprintf("Integration deleted — %d Converty automation%s removed with it.", removed, pluralS(removed))
+		} else {
+			flash.Info = "Integration deleted — its webhook subscriptions were removed."
+		}
 	case "notfound":
 		flash.Error = "That integration no longer exists."
 	case "missing":
@@ -129,6 +136,7 @@ func (a *App) handleIntegrations(k *kit.Kit) error {
 		Active:   "integrations",
 		ShopName: shop.Name,
 		UserName: principal.User.Name,
+		IsOwner:  principal.User.IsOwner(),
 	}
 	return k.Render(vdashboard.IntegrationsPage(page, integrations, a.Converty.Configured(), flash))
 }
@@ -363,10 +371,54 @@ func (a *App) handleIntegrationActivate(k *kit.Kit) error {
 	return k.Redirect(http.StatusSeeOther, "/integrations?flash="+flash)
 }
 
+// handleIntegrationDeletePreview renders the delete confirmation page: it lists
+// the store being removed and the shop's Converty automations that will be
+// deleted along with it. The merchant must confirm on the page before the
+// actual POST /integrations/{id}/delete runs.
+func (a *App) handleIntegrationDeletePreview(k *kit.Kit) error {
+	principal := auth.FromKit(k)
+	id, err := integrationID(k)
+	if err != nil {
+		return k.Redirect(http.StatusSeeOther, "/integrations?flash=notfound")
+	}
+
+	ctx := k.Request.Context()
+
+	integ, err := a.Converty.IntegrationByID(ctx, principal.User.ShopID, id)
+	if err != nil {
+		if errors.Is(err, converty.ErrNotFound) {
+			return k.Redirect(http.StatusSeeOther, "/integrations?flash=notfound")
+		}
+		return err
+	}
+
+	affected, err := a.Automations.ConvertyAutomations(ctx, principal.User.ShopID)
+	if err != nil {
+		return err
+	}
+
+	shop, err := a.Shops.GetByID(ctx, principal.User.ShopID)
+	if err != nil && err != shops.ErrNotFound {
+		return err
+	}
+
+	page := viewshared.Page{
+		Title:    "Delete integration",
+		Active:   "integrations",
+		ShopName: shop.Name,
+		UserName: principal.User.Name,
+		IsOwner:  principal.User.IsOwner(),
+	}
+	return k.Render(vdashboard.IntegrationDeletePage(page, integ, affected))
+}
+
 // handleIntegrationDelete removes one integration: every stored Converty
 // webhook subscription is unsubscribed (with an auto-refreshed token) before
-// the local row is dropped. Unsubscribe failures are logged but never block
-// the local delete, so the user is always freed from their account.
+// the local row is dropped. The shop's Converty automations are deleted in the
+// same transaction — they fire on events from any connected store, so a store
+// that goes away must not keep triggering sends. Unsubscribe failures are
+// logged but never block the local delete, so the user is always freed from
+// their account.
 func (a *App) handleIntegrationDelete(k *kit.Kit) error {
 	principal := auth.FromKit(k)
 	id, err := integrationID(k)
@@ -408,13 +460,37 @@ func (a *App) handleIntegrationDelete(k *kit.Kit) error {
 		a.Log.Warn("converty delete: hook cleanup skipped, no access token", "shop_id", principal.User.ShopID, "error", err)
 	}
 
-	if err := a.Converty.DeleteIntegration(ctx, principal.User.ShopID, id); err != nil {
+	tx, err := a.Pool.Begin(ctx)
+	if err != nil {
+		a.Log.Error("converty delete: transaction begin failed", "error", err)
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	removed, err := a.Automations.DeleteConvertyAutomations(ctx, tx, principal.User.ShopID)
+	if err != nil {
+		a.Log.Error("converty delete: automation cascade failed",
+			"shop_id", principal.User.ShopID, "integration_id", id, "error", err)
+		return err
+	}
+
+	if _, err := tx.Exec(ctx, `
+		DELETE FROM converty_integrations
+		WHERE id = $1 AND shop_id = $2`,
+		id, principal.User.ShopID,
+	); err != nil {
 		a.Log.Error("converty integration delete failed", "shop_id", principal.User.ShopID, "integration_id", id, "error", err)
 		return err
 	}
 
-	a.Log.Info("converty integration deleted", "shop_id", principal.User.ShopID, "integration_id", id)
-	return k.Redirect(http.StatusSeeOther, "/integrations?flash=deleted")
+	if err := tx.Commit(ctx); err != nil {
+		a.Log.Error("converty delete: commit failed", "error", err)
+		return err
+	}
+
+	a.Log.Info("converty integration deleted",
+		"shop_id", principal.User.ShopID, "integration_id", id, "automations_removed", removed)
+	return k.Redirect(http.StatusSeeOther, fmt.Sprintf("/integrations?flash=deleted&removed=%d", removed))
 }
 
 func integrationID(k *kit.Kit) (uuid.UUID, error) {
@@ -423,6 +499,13 @@ func integrationID(k *kit.Kit) (uuid.UUID, error) {
 		return uuid.Nil, fmt.Errorf("parse integration id: %w", err)
 	}
 	return id, nil
+}
+
+func pluralS(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
 
 func randomHex(n int) (string, error) {

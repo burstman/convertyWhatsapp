@@ -1,0 +1,113 @@
+package viewsdashboard
+
+import (
+	"fmt"
+
+	"whatsappconverty/internal/automations"
+	"whatsappconverty/internal/converty"
+	"whatsappconverty/web/views/components"
+	"whatsappconverty/web/views/layouts"
+)
+
+// IntegrationDeletePage is the delete-confirmation step for a Converty store.
+// Deleting one store also removes the shop's Converty automations — they fire
+// on events from any connected store — so the page lists them before the
+// merchant confirms, and the actual deletion happens on the POST away.
+templ IntegrationDeletePage(page components.Page, integration converty.Integration, automations []automations.Automation) {
+	@layouts.Shell(page) {
+		<div class="mx-auto max-w-2xl">
+			<div class="overflow-hidden rounded-xl border border-rose-200 bg-white shadow-sm">
+				<div class="border-b border-rose-100 px-6 py-4">
+					<h2 class="text-lg font-semibold text-rose-700">Delete this integration?</h2>
+					<p class="mt-1 text-sm text-slate-500">
+						Store <span class="font-medium text-slate-800">{ storeLabel(integration) }</span> will be
+						disconnected: its Converty webhook subscriptions are removed and new order events stop.
+					</p>
+				</div>
+
+				<div class="px-6 py-4">
+					if len(automations) == 0 {
+						<div class="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+							No Converty automations are configured, so nothing else is affected.
+						</div>
+					} else {
+						<h3 class="text-sm font-semibold text-slate-700">
+							This will also delete { automationCount(len(automations)) }:
+						</h3>
+						<ul class="mt-2 divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+							for _, a := range automations {
+								<li class="flex items-center justify-between gap-3 px-4 py-2 text-sm">
+									<span class="min-w-0 truncate font-medium text-slate-800">{ automationLabel(a) }</span>
+									<span class={ "shrink-0 rounded-full px-2 py-0.5 text-xs ", automationBadge(a.Enabled) }>
+										{ automationState(a.Enabled) }
+									</span>
+								</li>
+							}
+						</ul>
+						<p class="mt-3 text-xs text-slate-500">
+							Your automations fire on order events from every connected Converty store, so deleting
+							this store removes them. Your message history is kept.
+						</p>
+					}
+				</div>
+
+				<div class="flex items-center justify-end gap-3 border-t border-slate-100 px-6 py-4">
+					<a href="/integrations"
+						class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50">
+						Cancel
+					</a>
+					<form method="post" action={ "/integrations/" + integration.ID.String() + "/delete" }>
+						<button type="submit"
+							class="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-rose-700">
+							Delete { storeLabel(integration) }
+							if len(automations) > 0 {
+								and { automationCount(len(automations)) }
+							}
+						</button>
+					</form>
+				</div>
+			</div>
+		</div>
+	}
+}
+
+func storeLabel(i converty.Integration) string {
+	if i.StoreName != "" {
+		return i.StoreName
+	}
+	if i.StoreDomain != "" {
+		return i.StoreDomain
+	}
+	if i.StoreSlug != "" {
+		return i.StoreSlug
+	}
+	return "store"
+}
+
+func automationCount(n int) string {
+	if n == 1 {
+		return "1 automation"
+	}
+	return fmt.Sprintf("%d automations", n)
+}
+
+func automationLabel(a automations.Automation) string {
+	if a.Name != "" {
+		return a.Name + " · " + a.OrderStatus
+	}
+	return a.OrderStatus
+}
+
+func automationState(enabled bool) string {
+	if enabled {
+		return "Enabled"
+	}
+	return "Paused"
+}
+
+func automationBadge(enabled bool) string {
+	if enabled {
+		return "bg-emerald-100 text-emerald-700"
+	}
+	return "bg-slate-200 text-slate-600"
+}

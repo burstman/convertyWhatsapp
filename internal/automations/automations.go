@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"whatsappconverty/internal/database"
 	"whatsappconverty/internal/whatsapp"
 )
 
@@ -185,6 +186,40 @@ func (p *Processor) ListByShop(ctx context.Context, shopID uuid.UUID) ([]Automat
 	if err != nil {
 		return nil, err
 	}
+	return scanAutomations(rows)
+}
+
+// ConvertyAutomations returns the shop's Converty order-status automations —
+// the ones affected when a connected Converty store (integration) is deleted.
+func (p *Processor) ConvertyAutomations(ctx context.Context, shopID uuid.UUID) ([]Automation, error) {
+	rows, err := p.pool.Query(ctx, `
+		SELECT id, shop_id, name, description, event_source, order_status, template_id, enabled,
+		       send_time, send_timezone, send_days, delay_minutes, created_at, updated_at
+		FROM automations
+		WHERE shop_id = $1 AND event_source = 'converty'
+		ORDER BY name, created_at`,
+		shopID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return scanAutomations(rows)
+}
+
+// DeleteConvertyAutomations removes every Converty automation for a shop. It is
+// the row-level counterpart of ConvertyAutomations: the deletion of a store
+// integration drops the shop's Converty automations along with it, after the
+// merchant confirmed the warning page.
+func (p *Processor) DeleteConvertyAutomations(ctx context.Context, q database.Querier, shopID uuid.UUID) (int64, error) {
+	tag, err := q.Exec(ctx,
+		`DELETE FROM automations WHERE shop_id = $1 AND event_source = 'converty'`, shopID)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+func scanAutomations(rows pgx.Rows) ([]Automation, error) {
 	defer rows.Close()
 
 	var out []Automation

@@ -1,0 +1,84 @@
+package settings
+
+import (
+	"whatsappconverty/internal/shops"
+	"whatsappconverty/web/views/components"
+	"whatsappconverty/web/views/layouts"
+)
+
+// StatusCard renders the client's read-only WhatsApp status page. It shows the
+// state of the platform's shared service for this shop and the number
+// customers will see the message from. There is deliberately nothing to
+// configure: the sending identity is centrally owned, and the owner's enable
+// flow lives at /whatsapp/onboard.
+templ StatusCard(page components.Page, shop shops.Shop, platformNumber, verifiedName string) {
+	@layouts.Shell(page) {
+		<div class="mx-auto max-w-3xl">
+			<h1 class="text-2xl font-bold text-slate-900">WhatsApp</h1>
+			<p class="mt-1 text-sm text-slate-500">
+				Order notifications are sent from
+				<span class="font-medium text-slate-700">{ platformNumber }</span>
+				({ verifiedName }), the platform's shared WhatsApp number. You do not connect or manage a Meta app.
+			</p>
+
+			<div class="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+				<div class="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+					<div class="flex items-center gap-3">
+						if shop.WhatsappEnabled {
+							<span class="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">
+								<span class="h-2 w-2 rounded-full bg-emerald-500"></span> Enabled
+							</span>
+						} else {
+							<span class="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-sm font-medium text-amber-700">
+								<span class="h-2 w-2 rounded-full bg-amber-500"></span> Not enabled
+							</span>
+						}
+						<span class="text-sm text-slate-400">— { shop.Name }</span>
+					</div>
+					if !shop.WhatsappEnabled && page.IsOwner {
+						<a href="/whatsapp/onboard"
+							class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700">
+							Enable WhatsApp messaging
+						</a>
+					}
+				</div>
+
+				<dl class="grid grid-cols-1 gap-4 px-6 py-4 sm:grid-cols-2">
+					<div>
+						<dt class="text-xs font-medium uppercase tracking-wide text-slate-400">Sending number</dt>
+						<dd class="mt-1 text-sm font-medium text-slate-900">{ platformNumber }</dd>
+						<dd class="text-xs text-slate-500">{ verifiedName }</dd>
+					</div>
+					<div>
+						<dt class="text-xs font-medium uppercase tracking-wide text-slate-400">Shop contact phone</dt>
+						<dd class="mt-1 text-sm font-medium text-slate-900">
+							if shop.Phone != "" {
+								{ shop.Phone }
+							} else {
+								<span class="text-slate-400">Not set</span>
+							}
+						</dd>
+					</div>
+					if shop.WhatsappTermsAcceptedAt != nil {
+						<div>
+							<dt class="text-xs font-medium uppercase tracking-wide text-slate-400">Terms accepted</dt>
+							<dd class="mt-1 text-sm font-medium text-slate-900">{ shop.WhatsappTermsAcceptedAt.Format("2 Jan 2006") }</dd>
+						</div>
+					}
+				</dl>
+			</div>
+
+			if shop.WhatsappEnabled {
+				<div class="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+					Sending is active. Order events from your connected Converty stores fire the automations you
+					configured on the <a href="/automations" class="font-medium underline">Automations</a> page.
+				</div>
+			} else if !page.IsOwner {
+				<div class="mt-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+					WhatsApp messaging is not enabled for this shop. Ask your shop owner to enable it and accept
+					the service terms.
+				</div>
+			}
+		</div>
+	}
+}
