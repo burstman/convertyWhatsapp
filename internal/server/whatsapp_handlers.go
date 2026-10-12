@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/anthdm/superkit/kit"
-	"github.com/jackc/pgx/v5"
 
 	"whatsappconverty/internal/auth"
 	"whatsappconverty/internal/shops"
@@ -44,11 +43,11 @@ func (a *App) handleWhatsappStatus(k *kit.Kit) error {
 	return k.Render(vsettings.StatusCard(page, shop, a.Cfg.MetaPhoneNumber, a.Cfg.MetaVerifiedName))
 }
 
-// handleWhatsappSettings renders the (owner-only) WhatsApp settings page. This
-// is a legacy view that predates the shared single-WABA model: template
-// listings belong to the shop-scoped /templates page only. A shop must never
-// see the platform's account-level templates (other merchants' content), so no
-// template list is rendered here.
+// handleWhatsappSettings renders the owner-only WhatsApp settings page. It is
+// a management view over the centrally owned sending identity: it shows the
+// platform number (read-only — merchants never supply Meta credentials), lets
+// the owner edit the shop contact phone and disable the service. Templating and
+// the shared send path live at /whatsapp (status) and /whatsapp/onboard.
 func (a *App) handleWhatsappSettings(k *kit.Kit) error {
 	if err := a.requireOwner(k); err != nil {
 		return err
@@ -61,89 +60,84 @@ func (a *App) handleWhatsappSettings(k *kit.Kit) error {
 	}
 
 	page := viewshared.Page{
-		Title:    "Settings",
+		Title:    "WhatsApp settings",
 		Active:   "settings",
 		ShopName: shop.Name,
 		UserName: principal.User.Name,
-		IsOwner:  principal.User.IsOwner(),
+		IsOwner:  true,
 	}
-
-	integ, err := a.WhatsApp.Integration(k.Request.Context(), principal.User.ShopID)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return k.Render(vsettings.Settings(page, nil, nil))
-		}
-		return err
-	}
-
-	return k.Render(vsettings.Settings(page, &integ, nil))
+	flash := k.Request.URL.Query().Get("flash")
+	return k.Render(vsettings.SettingsPage(page, shop, flash, a.Cfg.MetaPhoneNumber, a.Cfg.MetaVerifiedName))
 }
 
-// handleWhatsappConnect stores the shop's Meta WhatsApp credentials after a
-// live sanity check of the token and ids against the Graph API. Owner-only.
-func (a *App) handleWhatsappConnect(k *kit.Kit) error {
+// handleWhatsappSettingsPhone updates the shop contact phone used on the
+// status card. Owner-only.
+func (a *App) handleWhatsappSettingsPhone(k *kit.Kit) error {
 	if err := a.requireOwner(k); err != nil {
 		return err
 	}
 
 	principal := auth.FromKit(k)
+	phone := k.Request.FormValue("shop_phone")
+	if !whatsapp.ValidPhone(phone) {
+		a.Log.Warn("whatsapp settings: invalid phone", "shop_id", principal.User.ShopID)
+		return k.Redirect(http.StatusSeeOther, "/settings?flash=invalid_phone")
+	}
 
+	if err := a.Shops.UpdatePhone(k.Request.Context(), principal.User.ShopID, phone); err != nil {
+		a.Log.Error("whatsapp settings phone update failed", "shop_id", principal.User.ShopID, "error", err)
+		return k.Redirect(http.StatusSeeOther, "/settings?flash=error")
+	}
+
+	a.Log.Info("whatsapp settings phone updated", "shop_id", principal.User.ShopID)
+	return k.Redirect(http.StatusSeeOther, "/settings?flash=phone_saved")
+}
+
+// handleWhatsappSettingsDisable turns the WhatsApp service off for the shop.
+// Owner-only.
+func (a *App) handleWhatsappSettingsDisable(k *kit.Kit) error {
+	if err := a.requireOwner(k); err != nil {
+		return err
+	}
+
+	principal := auth.FromKit(k)
+	if err := a.Shops.DisableWhatsApp(k.Request.Context(), principal.User.ShopID); err != nil {
+		a.Log.Error("whatsapp settings disable failed", "shop_id", principal.User.ShopID, "error", err)
+		return k.Redirect(http.StatusSeeOther, "/settings?flash=error")
+	}
+	a.Log.Info("whatsapp service disabled", "shop_id", principal.User.ShopID)
+	return k.Redirect(http.StatusSeeOther, "/settings?flash=disabled")
+}
+
+// handleBilling renders the owner-only Billing page: the shop's message usage
+// (billable sends) and the estimated spend at the configured per-message price.
+func (a *App) handleBilling(k *kit.Kit) error {
+	if err := a.requireOwner(k); err != nil {
+		return err
+	}
+
+	principal := auth.FromKit(k)
 	ctx := k.Request.Context()
-	token := k.Request.FormValue("token")
-	phoneNumberID := k.Request.FormValue("phone_number_id")
-	messagingAccountID := k.Request.FormValue("messaging_account_id")
-	phoneNumber := k.Request.FormValue("phone_number")
 
-	if token == "" || phoneNumberID == "" || messagingAccountID == "" {
-		a.Log.Warn("whatsapp connect rejected: missing fields")
-		return k.Redirect(http.StatusSeeOther, "/settings?connect=error")
-	}
-
-	// Verify the credentials are live before persisting anything.
-	pn, err := a.WhatsApp.GetPhoneNumber(ctx, token, phoneNumberID)
-	if err != nil {
-		a.Log.Warn("whatsapp connect rejected: phone number check failed", "error", err)
-		return k.Redirect(http.StatusSeeOther, "/settings?connect=error")
-	}
-	if phoneNumber == "" {
-		phoneNumber = pn.DisplayPhoneNumber
-	}
-
-	if err := a.WhatsApp.SaveIntegration(ctx, principal.User.ShopID, token, whatsapp.Integration{
-		ShopID:             principal.User.ShopID,
-		WaacID:             phoneNumberID,
-		PhoneNumberID:      phoneNumberID,
-		MessagingAccountID: messagingAccountID,
-		PhoneNumber:        phoneNumber,
-		Status:             "connected",
-	}); err != nil {
-		a.Log.Error("whatsapp connect failed to save", "error", err)
-		return k.Redirect(http.StatusSeeOther, "/settings?connect=error")
-	}
-
-	a.Log.Info("whatsapp connected",
-		"shop_id", principal.User.ShopID,
-		"phone_number_id", phoneNumberID,
-		"messaging_account_id", messagingAccountID,
-		"phone", phoneNumber,
-		"verified_name", pn.VerifiedName)
-	return k.Redirect(http.StatusSeeOther, "/settings?connect=success")
-}
-
-// handleWhatsappDisconnect removes the shop's WhatsApp credentials. Owner-only.
-func (a *App) handleWhatsappDisconnect(k *kit.Kit) error {
-	if err := a.requireOwner(k); err != nil {
+	shop, err := a.Shops.GetByID(ctx, principal.User.ShopID)
+	if err != nil && err != shops.ErrNotFound {
 		return err
 	}
 
-	principal := auth.FromKit(k)
-
-	if err := a.WhatsApp.DeleteIntegration(k.Request.Context(), principal.User.ShopID); err != nil {
-		a.Log.Error("whatsapp disconnect failed", "error", err)
-		return k.Redirect(http.StatusSeeOther, "/settings?connect=error")
+	usage, err := a.WhatsApp.MessagesUsage(ctx, principal.User.ShopID)
+	if err != nil {
+		a.Log.Error("billing usage query failed", "shop_id", principal.User.ShopID, "error", err)
+		return err
 	}
-	a.Log.Info("whatsapp disconnected", "shop_id", principal.User.ShopID)
-	return k.Redirect(http.StatusSeeOther, "/settings?connect=disconnected")
+
+	page := viewshared.Page{
+		Title:    "Billing",
+		Active:   "billing",
+		ShopName: shop.Name,
+		UserName: principal.User.Name,
+		IsOwner:  true,
+	}
+	return k.Render(vsettings.BillingPage(page, usage, a.Cfg.PricePerMessage))
 }
 
 // handleWhatsappOnboard renders the WhatsApp enable page: the owner opts into

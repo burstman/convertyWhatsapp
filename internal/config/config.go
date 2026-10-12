@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -64,6 +65,10 @@ type Config struct {
 	// MarketingPurgeDelay is how long after Meta flags a template as marketing
 	// before the platform auto-deletes it from Meta and the shop's list.
 	MarketingPurgeDelay time.Duration
+
+	// PricePerMessage is the per-message list price (USD) shown on the owner's
+	// Billing page to estimate the shop's spend from its message volume.
+	PricePerMessage float64
 }
 
 // Load reads configuration from the environment.
@@ -99,6 +104,7 @@ func Load() Config {
 		MetaWebhookVerifyToken:  getenv("META_WEBHOOK_VERIFY_TOKEN", ""),
 		MetaAppSecret:           getenv("META_APP_SECRET", ""),
 		MarketingPurgeDelay:     getenvDuration("MARKETING_PURGE_DELAY", 15*time.Minute),
+		PricePerMessage:         getenvFloat("PRICE_PER_MESSAGE", 0.030),
 	}
 }
 
@@ -128,6 +134,15 @@ func getenvDuration(name string, def time.Duration) time.Duration {
 	if v := getenv(name, ""); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			return d
+		}
+	}
+	return def
+}
+
+func getenvFloat(name string, def float64) float64 {
+	if v := getenv(name, ""); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			return f
 		}
 	}
 	return def

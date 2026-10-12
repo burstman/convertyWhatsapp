@@ -481,6 +481,12 @@ type TestTemplateRequest struct {
 
 var phonePattern = regexp.MustCompile(`^\+?[0-9]{8,15}$`)
 
+// ValidPhone reports whether a phone number is well-formed for the platform:
+// digits only, 8-15 long, optional leading plus (international format).
+func ValidPhone(phone string) bool {
+	return phonePattern.MatchString(strings.Join(strings.Fields(phone), ""))
+}
+
 // SendTemplateTest delivers a template to the given number for testing. The
 // message is recorded in the ledger with no customer attached. Any refusal
 // surfaces as *SendRejection.

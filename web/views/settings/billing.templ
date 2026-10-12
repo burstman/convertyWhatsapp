@@ -1,0 +1,155 @@
+package settings
+
+import (
+	"fmt"
+	"math"
+	"strings"
+
+	"whatsappconverty/internal/whatsapp"
+	"whatsappconverty/web/views/components"
+	"whatsappconverty/web/views/layouts"
+)
+
+// BillingPage is the owner-only usage and pricing page. It reflects the
+// per-message model: Meta bills the platform, the platform bills merchants per
+// message. Price comes from the operator's PRICE_PER_MESSAGE config.
+templ BillingPage(page components.Page, usage whatsapp.UsageSummary, pricePerMessage float64) {
+	@layouts.Shell(page) {
+		<div class="mx-auto max-w-4xl">
+			<h1 class="text-2xl font-bold text-slate-900">Billing</h1>
+			<p class="mt-1 text-sm text-slate-500">
+				Per-message pricing: <span class="font-medium text-slate-700">{ formatMoney(pricePerMessage) }</span> per billable message.
+				Usage is counted when a notification is accepted by WhatsApp.
+			</p>
+
+			<div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+				<div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+					<div class="text-xs font-medium uppercase tracking-wide text-slate-400">{ usage.MonthLabel } — sent</div>
+					<div class="mt-2 text-3xl font-bold text-slate-900">{ usage.ThisMonth }</div>
+				</div>
+				<div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+					<div class="text-xs font-medium uppercase tracking-wide text-slate-400">{ usage.MonthLabel } — estimated spend</div>
+					<div class="mt-2 text-3xl font-bold text-indigo-600">{ formatMoney(pricePerMessage * float64(usage.ThisMonth)) }</div>
+				</div>
+				<div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+					<div class="text-xs font-medium uppercase tracking-wide text-slate-400">All-time sent</div>
+					<div class="mt-2 text-3xl font-bold text-slate-900">{ usage.AllTime }</div>
+				</div>
+			</div>
+
+			<div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+				<div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+					<div class="border-b border-slate-100 px-5 py-3 text-sm font-semibold text-slate-800">Monthly history</div>
+					if len(usage.Monthly) == 0 {
+						<div class="px-5 py-6 text-sm text-slate-500">No messages sent yet.</div>
+					} else {
+						<table class="w-full text-sm">
+							<tbody class="divide-y divide-slate-100">
+								for _, m := range usage.Monthly {
+									<tr>
+										<td class="px-5 py-2 text-slate-700">{ m.Month }</td>
+										<td class="px-5 py-2 text-right font-medium text-slate-900">{ m.Count }</td>
+									</tr>
+								}
+							</tbody>
+						</table>
+					}
+				</div>
+
+				<div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+					<div class="border-b border-slate-100 px-5 py-3 text-sm font-semibold text-slate-800">Status — { usage.MonthLabel }</div>
+					if len(usage.StatusCounts) == 0 {
+						<div class="px-5 py-6 text-sm text-slate-500">No messages this month.</div>
+					} else {
+						<ul class="divide-y divide-slate-100">
+							for _, item := range statusItems(usage.StatusCounts) {
+								<li class="flex items-center justify-between px-5 py-2 text-sm">
+									<span class="capitalize text-slate-700">{ item.Label }</span>
+									<span class="font-medium text-slate-900">{ item.Count }</span>
+								</li>
+							}
+						</ul>
+					}
+				</div>
+
+				<div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+					<div class="border-b border-slate-100 px-5 py-3 text-sm font-semibold text-slate-800">Top templates — { usage.MonthLabel }</div>
+					if len(usage.ByTemplate) == 0 {
+						<div class="px-5 py-6 text-sm text-slate-500">No templates used this month.</div>
+					} else {
+						<ul class="divide-y divide-slate-100">
+							for _, item := range usage.ByTemplate {
+								<li class="flex items-center justify-between px-5 py-2 text-sm">
+									<span class="min-w-0 truncate text-slate-700">{ item.Label }</span>
+									<span class="shrink-0 pl-4 font-medium text-slate-900">{ item.Count }</span>
+								</li>
+							}
+						</ul>
+					}
+				</div>
+
+				<div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+					<div class="border-b border-slate-100 px-5 py-3 text-sm font-semibold text-slate-800">Top automations — { usage.MonthLabel }</div>
+					if len(usage.ByAutomation) == 0 {
+						<div class="px-5 py-6 text-sm text-slate-500">No automations used this month.</div>
+					} else {
+						<ul class="divide-y divide-slate-100">
+							for _, item := range usage.ByAutomation {
+								<li class="flex items-center justify-between px-5 py-2 text-sm">
+									<span class="min-w-0 truncate text-slate-700">{ item.Label }</span>
+									<span class="shrink-0 pl-4 font-medium text-slate-900">{ item.Count }</span>
+								</li>
+							}
+						</ul>
+					}
+				</div>
+			</div>
+
+			<div class="mt-6 rounded-xl border border-slate-200 bg-white px-5 py-4 text-sm text-slate-600">
+				<span class="font-medium text-slate-800">{ usage.CustomerCount }</span> distinct customers messaged all-time.
+			</div>
+		</div>
+	}
+}
+
+func statusItems(counts map[string]int64) []whatsapp.UsageItem {
+	order := []string{"queued", "sent", "delivered", "read", "failed"}
+	out := make([]whatsapp.UsageItem, 0, len(counts))
+	if counts[""] > 0 {
+		out = append(out, whatsapp.UsageItem{Label: "queued", Count: counts[""]})
+	}
+	for _, k := range order {
+		if n := counts[k]; n > 0 {
+			out = append(out, whatsapp.UsageItem{Label: k, Count: n})
+		}
+	}
+	return out
+}
+
+// formatMoney renders a float as USD ("$12.34", "$1,234.56") using string
+// arithmetic on cents to avoid float formatting artifacts.
+func formatMoney(v float64) string {
+	cents := int64(math.Round(v * 100))
+	sign := ""
+	if cents < 0 {
+		sign = "-"
+		cents = -cents
+	}
+	s := fmt.Sprintf("%d", cents)
+	for len(s) < 3 {
+		s = "0" + s
+	}
+	whole, frac := s[:len(s)-2], s[len(s)-2:]
+	return sign + "$" + thousandSep(whole) + "." + frac
+}
+
+func thousandSep(s string) string {
+	var b strings.Builder
+	for i, c := range s {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			b.WriteByte(',')
+		}
+		b.WriteRune(c)
+	}
+	return b.String()
+}

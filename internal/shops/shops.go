@@ -79,3 +79,27 @@ func (r *Repository) EnableWhatsApp(ctx context.Context, id uuid.UUID, phone str
 	)
 	return err
 }
+
+// UpdatePhone changes the shop's contact phone. Owner-only: it is the number
+// shown on the WhatsApp status card and used as the merchant's contact line.
+func (r *Repository) UpdatePhone(ctx context.Context, id uuid.UUID, phone string) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE shops
+		SET phone = $2, updated_at = now()
+		WHERE id = $1`,
+		id, phone,
+	)
+	return err
+}
+
+// DisableWhatsApp turns the shop's WhatsApp service off. The terms acceptance
+// timestamp is kept for the audit trail; re-enabling goes through onboard.
+func (r *Repository) DisableWhatsApp(ctx context.Context, id uuid.UUID) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE shops
+		SET whatsapp_enabled = false, updated_at = now()
+		WHERE id = $1`,
+		id,
+	)
+	return err
+}

@@ -15,3 +15,10 @@ type RegisterValues struct {
 	Password        string `form:"password"`
 	ConfirmPassword string `form:"confirm_password"`
 }
+
+// InviteRedeemValues is bound from the "set your password" form on the
+// /invite/{token} page, where a pending member activates their account.
+type InviteRedeemValues struct {
+	Password        string `form:"password"`
+	ConfirmPassword string `form:"confirm_password"`
+}
