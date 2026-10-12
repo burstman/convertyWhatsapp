@@ -123,8 +123,7 @@ func (s *Service) MessagesUsage(ctx context.Context, shopID uuid.UUID) (UsageSum
 	statusRows.Close()
 
 	templateRows, err := s.pool.Query(ctx, `
-		SELECT COALESCE(t.name, '(deleted template)'), count(*)
-		FROM messages m
+		SELECT COALESCE(t.meta_template_name, '(deleted template)'), count(*) FROM messages m
 		LEFT JOIN templates t ON t.id = m.template_id
 		WHERE m.shop_id = $1 AND m.sent_at IS NOT NULL AND m.created_at >= date_trunc('month', now())
 		GROUP BY 1
