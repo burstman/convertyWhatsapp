@@ -90,6 +90,19 @@ func TestEvaluateSendRuleConsentEnforcement(t *testing.T) {
 	}
 }
 
+// A customer learned from a Converty order carries only a phone number, never
+// consent. This is the send-side half of the fix that stopped inbound webhooks
+// from minting opt-in: with no explicit consent record the order notification
+// is refused.
+func TestEvaluateSendRuleOrderPhoneIsNotConsent(t *testing.T) {
+	// ownedCustomer models a row created by the order pipeline (phone present,
+	// no consent), and ConsentState{} is the "no consent record" state.
+	err := EvaluateSendRule(activeMerchant(), ownedCustomer(), ConsentState{}, approvedTemplate(), sendReq())
+	if got := rejCode(err); got != ErrCodeOptInRequired {
+		t.Fatalf("order phone without consent: got %q, want %q", got, ErrCodeOptInRequired)
+	}
+}
+
 func TestEvaluateSendRuleMerchantGate(t *testing.T) {
 	inactive := activeMerchant()
 	inactive.Status = "suspended"

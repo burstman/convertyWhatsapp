@@ -38,6 +38,10 @@ func Start(cfg config.Config, logger *slog.Logger) (*Server, error) {
 
 	wa := whatsapp.NewService(cfg, pool, logger)
 	auto := automations.NewProcessor(cfg, pool, logger, wa)
+	// The delivery layer re-checks the Converty integration immediately before
+	// every send, so the worker itself must not gate on it: one authoritative
+	// check, applied on the first attempt and every retry alike.
+	wa.SetIntegrationChecker(auto)
 
 	runner := queue.NewRunner(pool, logger)
 	runner.Handle(queue.TaskPurgeMarketingTemplate, wa.HandlePurgeMarketingTemplate)
@@ -57,11 +61,15 @@ type automationLookup interface {
 	AutomationEnabled(ctx context.Context, id uuid.UUID) (bool, error)
 }
 
-// gateAutomation re-checks an automation before its queued send is delivered.
-// Pausing switches off what fires next, but the job was already parked in the
-// queue — a scheduled send can sit there for hours — so without this check a
-// pause would only stop future events and the pending message would still go
-// out.
+// gateAutomation re-checks a queued send immediately before delivery: pausing
+// the automation that produced it must also stop a message already parked in
+// the queue. A scheduled send can sit for hours, so without this check a pause
+// would only stop future events and the pending message would still go out.
+//
+// Converty integration deactivation is deliberately NOT checked here. That is a
+// delivery-time concern handled once by the send gate inside SendTemplateMessage
+// (whatsapp.gateIntegration), so it applies uniformly to inline, retry-held and
+// queued sends without a second, divergent code path.
 func gateAutomation(lookup automationLookup, next queue.Handler, logger *slog.Logger) queue.Handler {
 	return func(ctx context.Context, payload []byte) error {
 		var job whatsapp.SendWhatsAppTemplateJob
@@ -69,26 +77,25 @@ func gateAutomation(lookup automationLookup, next queue.Handler, logger *slog.Lo
 			// Malformed payload: let the sender deal with it rather than guessing here.
 			return next(ctx, payload)
 		}
-		if job.AutomationID == uuid.Nil {
-			// Not an automation send, or one queued before automation ids were
-			// recorded. Nothing to check.
-			return next(ctx, payload)
+
+		if job.AutomationID != uuid.Nil {
+			active, err := lookup.AutomationEnabled(ctx, job.AutomationID)
+			if err != nil {
+				// Fail closed: we cannot establish that the automation is still
+				// enabled, so the message must not be delivered on this attempt.
+				// Return the error so the runner retries it with the standard
+				// backoff — a transient database blip is resolved on a later
+				// attempt rather than sent blind or silently dropped.
+				return fmt.Errorf("automation gate: lookup %s: %w", job.AutomationID, err)
+			}
+			if !active {
+				logger.Info("queued send dropped: automation paused or deleted",
+					"automation_id", job.AutomationID, "shop_id", job.ShopID,
+					"customer_id", job.CustomerID, "template_id", job.TemplateID)
+				return nil
+			}
 		}
 
-		active, err := lookup.AutomationEnabled(ctx, job.AutomationID)
-		if err != nil {
-			// A failed lookup must not swallow a customer message: send on and let
-			// the send gate decide.
-			logger.Warn("automation gate: lookup failed, sending anyway",
-				"automation_id", job.AutomationID, "shop_id", job.ShopID, "error", err)
-			return next(ctx, payload)
-		}
-		if !active {
-			logger.Info("queued send dropped: automation paused or deleted",
-				"automation_id", job.AutomationID, "shop_id", job.ShopID,
-				"customer_id", job.CustomerID, "template_id", job.TemplateID)
-			return nil
-		}
 		return next(ctx, payload)
 	}
 }

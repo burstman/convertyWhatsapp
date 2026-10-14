@@ -71,6 +71,8 @@ func (a *App) handleAutomations(k *kit.Kit) error {
 		flash.Error = "Test message failed — the sender must be healthy: use a valid E.164 number that is in the WhatsApp test phone list or has an open 24h conversation."
 	case "testnophone":
 		flash.Error = "Enter a phone number to test the message."
+	case "testratelimited":
+		flash.Error = "Too many test messages — wait before sending another."
 	case "toggled":
 		flash.Info = "Automation updated."
 	case "deleted":
@@ -473,68 +475,48 @@ func (a *App) handleAutomationToggle(k *kit.Kit) error {
 
 // handleAutomationTest sends the automation's template to a number the user
 // fills in, so the message can be previewed live before it fires on real
-// events. Sample variables stand in for the real order data.
+// events. Sample variables stand in for the real order data. Owner-only: a
+// member can neither preview nor spend the shop's test-send budget.
 func (a *App) handleAutomationTest(k *kit.Kit) error {
-	principal := auth.FromKit(k)
-	shopID := principal.User.ShopID
-	ctx := k.Request.Context()
+	// For a non-owner the not-found page is already rendered; return nil so the
+	// framework does not attempt a second response.
+	allowed, err := a.requireOwner(k)
+	if err != nil {
+		return err
+	}
+	if !allowed {
+		return nil
+	}
 
 	id, err := uuid.Parse(chi.URLParam(k.Request, "id"))
 	if err != nil {
 		return k.Redirect(http.StatusSeeOther, "/automations?flash=notfound")
 	}
-	automation, err := a.Automations.Automation(ctx, shopID, id)
+
+	principal := auth.FromKit(k)
+	outcome, err := runAutomationTest(k.Request.Context(), principal.User, id,
+		k.Request.FormValue("phone"), a.testSendDeps())
 	if err != nil {
-		a.Log.Error("automation test lookup failed", "id", id, "error", err)
-		return k.Redirect(http.StatusSeeOther, "/automations?flash=error")
-	}
-	if automation == nil {
-		return k.Redirect(http.StatusSeeOther, "/automations?flash=notfound")
-	}
-	if automation.TemplateID == uuid.Nil {
-		return k.Redirect(http.StatusSeeOther, "/automations?flash=notemplate")
-	}
-
-	to := strings.TrimSpace(k.Request.FormValue("phone"))
-	if to == "" {
-		return k.Redirect(http.StatusSeeOther, "/automations?flash=testnophone")
-	}
-
-	templates, err := a.WhatsApp.Templates(ctx, shopID)
-	if err != nil {
-		return err
-	}
-	var chosen whatsapp.MerchantTemplate
-	found := false
-	for _, t := range templates {
-		if t.ID == automation.TemplateID {
-			chosen = t
-			found = true
-			break
-		}
-	}
-	if !found {
-		return k.Redirect(http.StatusSeeOther, "/automations?flash=notemplate")
-	}
-
-	if _, err := a.WhatsApp.SendTemplateTest(ctx, whatsapp.TestTemplateRequest{
-		ShopID:     shopID,
-		TemplateID: automation.TemplateID,
-		To:         to,
-		Variables:  testVariables(chosen),
-	}); err != nil {
-		var rej *whatsapp.SendRejection
-		if errors.As(err, &rej) {
-			a.Log.Warn("automation test send rejected",
-				"automation_id", id, "code", rej.Code, "reason", rej.Reason)
-			return k.Redirect(http.StatusSeeOther, "/automations?flash=testfailed")
-		}
 		a.Log.Error("automation test send failed", "automation_id", id, "error", err)
 		return k.Redirect(http.StatusSeeOther, "/automations?flash=error")
 	}
 
-	a.Log.Info("automation test message sent", "automation_id", id, "to", to)
-	return k.Redirect(http.StatusSeeOther, "/automations?flash=tested")
+	switch outcome {
+	case testSendNotFound:
+		return k.Redirect(http.StatusSeeOther, "/automations?flash=notfound")
+	case testSendNoTemplate:
+		return k.Redirect(http.StatusSeeOther, "/automations?flash=notemplate")
+	case testSendNoPhone:
+		return k.Redirect(http.StatusSeeOther, "/automations?flash=testnophone")
+	case testSendRateLimited:
+		return k.Redirect(http.StatusSeeOther, "/automations?flash=testratelimited")
+	case testSendRejected:
+		return k.Redirect(http.StatusSeeOther, "/automations?flash=testfailed")
+	case testSendAccepted:
+		return k.Redirect(http.StatusSeeOther, "/automations?flash=tested")
+	default:
+		return k.Redirect(http.StatusSeeOther, "/automations?flash=error")
+	}
 }
 
 // testVariables fills the template slots so a test message looks like the real

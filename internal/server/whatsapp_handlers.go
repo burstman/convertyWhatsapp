@@ -12,13 +12,21 @@ import (
 	vsettings "whatsappconverty/web/views/settings"
 )
 
-// requireOwner restricts a handler to the shop owner. Non-owners receive the
-// platform's 404 page so owner-only pages do not reveal that they exist.
-func (a *App) requireOwner(k *kit.Kit) error {
+// requireOwner checks that the request belongs to the shop owner. It returns
+// (true, nil) when the owner may run the handler. For a non-owner it renders the
+// platform's 404 page (so owner-only pages do not reveal that they exist) and
+// returns (false, nil); the caller must stop by returning nil. If rendering the
+// 404 page itself fails it returns (false, err) so the caller surfaces the
+// failure instead of swallowing it. Rendering a response is not, on its own,
+// enough to stop handler execution — hence the explicit bool.
+func (a *App) requireOwner(k *kit.Kit) (bool, error) {
 	if auth.FromKit(k).User.IsOwner() {
-		return nil
+		return true, nil
 	}
-	return a.handleNotFound(k)
+	if err := a.handleNotFound(k); err != nil {
+		return false, err
+	}
+	return false, nil
 }
 
 // handleWhatsappStatus renders the client's read-only WhatsApp status: the
@@ -49,8 +57,12 @@ func (a *App) handleWhatsappStatus(k *kit.Kit) error {
 // the owner edit the shop contact phone and disable the service. Templating and
 // the shared send path live at /whatsapp (status) and /whatsapp/onboard.
 func (a *App) handleWhatsappSettings(k *kit.Kit) error {
-	if err := a.requireOwner(k); err != nil {
+	allowed, err := a.requireOwner(k)
+	if err != nil {
 		return err
+	}
+	if !allowed {
+		return nil
 	}
 
 	principal := auth.FromKit(k)
@@ -73,8 +85,12 @@ func (a *App) handleWhatsappSettings(k *kit.Kit) error {
 // handleWhatsappSettingsPhone updates the shop contact phone used on the
 // status card. Owner-only.
 func (a *App) handleWhatsappSettingsPhone(k *kit.Kit) error {
-	if err := a.requireOwner(k); err != nil {
+	allowed, err := a.requireOwner(k)
+	if err != nil {
 		return err
+	}
+	if !allowed {
+		return nil
 	}
 
 	principal := auth.FromKit(k)
@@ -96,8 +112,12 @@ func (a *App) handleWhatsappSettingsPhone(k *kit.Kit) error {
 // handleWhatsappSettingsDisable turns the WhatsApp service off for the shop.
 // Owner-only.
 func (a *App) handleWhatsappSettingsDisable(k *kit.Kit) error {
-	if err := a.requireOwner(k); err != nil {
+	allowed, err := a.requireOwner(k)
+	if err != nil {
 		return err
+	}
+	if !allowed {
+		return nil
 	}
 
 	principal := auth.FromKit(k)
@@ -112,8 +132,12 @@ func (a *App) handleWhatsappSettingsDisable(k *kit.Kit) error {
 // handleBilling renders the owner-only Billing page: the shop's message usage
 // (billable sends) and the estimated spend at the configured per-message price.
 func (a *App) handleBilling(k *kit.Kit) error {
-	if err := a.requireOwner(k); err != nil {
+	allowed, err := a.requireOwner(k)
+	if err != nil {
 		return err
+	}
+	if !allowed {
+		return nil
 	}
 
 	principal := auth.FromKit(k)
@@ -145,8 +169,12 @@ func (a *App) handleBilling(k *kit.Kit) error {
 // service terms (which include the customer opt-in obligation). Owner-only:
 // accepting the terms is an audited legal commitment.
 func (a *App) handleWhatsappOnboard(k *kit.Kit) error {
-	if err := a.requireOwner(k); err != nil {
+	allowed, err := a.requireOwner(k)
+	if err != nil {
 		return err
+	}
+	if !allowed {
+		return nil
 	}
 
 	principal := auth.FromKit(k)
@@ -170,8 +198,12 @@ func (a *App) handleWhatsappOnboard(k *kit.Kit) error {
 // enabled, contact phone saved. No Meta credentials are handled here — sending
 // happens through the platform's centrally owned number. Owner-only.
 func (a *App) handleWhatsappOnboardPost(k *kit.Kit) error {
-	if err := a.requireOwner(k); err != nil {
+	allowed, err := a.requireOwner(k)
+	if err != nil {
 		return err
+	}
+	if !allowed {
+		return nil
 	}
 
 	principal := auth.FromKit(k)

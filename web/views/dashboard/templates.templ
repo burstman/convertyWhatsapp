@@ -17,10 +17,12 @@ templ TemplatesPage(page components.Page, templates []whatsapp.MerchantTemplate,
 						sent. Approval is decided by Meta's review — not by us.
 					</p>
 				</div>
-				<a href="/templates/refresh"
-					class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
-					Refresh from Meta
-				</a>
+				<form method="post" action="/templates/refresh">
+					<button type="submit"
+						class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+						Refresh from Meta
+					</button>
+				</form>
 			</div>
 
 			if flash.Error != "" {

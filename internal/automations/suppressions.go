@@ -31,7 +31,13 @@ type Suppression struct {
 	TriggerLabel   string
 	OrderID        string
 	IdempotencyKey string
-	CreatedAt      time.Time
+	// IntegrationID is the connected Converty store the event was attributed to,
+	// when it was attributable. It rides along on the suppression row so a retry
+	// can re-check the store is still active before delivering. uuid.Nil marks a
+	// row written before this was captured (or a non-Converty source); a retry of
+	// one is refused rather than delivered unverified.
+	IntegrationID uuid.UUID
+	CreatedAt     time.Time
 }
 
 // reasonMissingVariables explains a suppression in the merchant's terms rather
@@ -54,11 +60,12 @@ func (p *Processor) RecordSuppression(ctx context.Context, in SendInput, missing
 	if _, err := p.pool.Exec(ctx, `
 		INSERT INTO automation_suppressions
 			(shop_id, automation_id, customer_id, template_id, reason, missing_variables,
-			 trigger_label, tracking_code, order_id, idempotency_key)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			 trigger_label, tracking_code, order_id, idempotency_key, integration_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		ON CONFLICT (automation_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING`,
 		in.ShopID, in.AutomationID, in.CustomerID, in.TemplateID,
 		reasonMissingVariables, encoded, in.StatusLabel, trackingCode, in.OrderID, in.IdempotencyKey,
+		in.IntegrationID,
 	); err != nil {
 		p.log.Warn("automation: could not record suppressed send",
 			"shop_id", in.ShopID, "automation_id", in.AutomationID, "error", err)
@@ -76,7 +83,9 @@ func SuppressionsForAutomation(ctx context.Context, db database.Querier, automat
 	rows, err := db.Query(ctx, `
 		SELECT s.id, s.shop_id, s.automation_id, s.customer_id, s.reason, s.missing_variables,
 		       COALESCE(s.trigger_label, ''), COALESCE(s.order_id, ''),
-		       COALESCE(s.idempotency_key, ''), s.created_at, COALESCE(c.name, ''),
+		       COALESCE(s.idempotency_key, ''),
+		       COALESCE(s.integration_id, '00000000-0000-0000-0000-000000000000'::uuid),
+		       s.created_at, COALESCE(c.name, ''),
 		       COALESCE(t.meta_template_name, '')
 		FROM automation_suppressions s
 		LEFT JOIN customers c ON c.id = s.customer_id
@@ -97,7 +106,7 @@ func SuppressionsForAutomation(ctx context.Context, db database.Querier, automat
 		var missing []byte
 		if err := rows.Scan(
 			&s.ID, &s.ShopID, &s.AutomationID, &s.CustomerID, &s.Reason, &missing,
-			&s.TriggerLabel, &s.OrderID, &s.IdempotencyKey,
+			&s.TriggerLabel, &s.OrderID, &s.IdempotencyKey, &s.IntegrationID,
 			&s.CreatedAt, &s.CustomerName, &s.TemplateName,
 		); err != nil {
 			return nil, err
@@ -136,6 +145,7 @@ type pendingSend struct {
 	orderID     string
 	label       string
 	idempotency string
+	integration uuid.UUID
 }
 
 // RetrySuppressions re-runs the sends this automation did not deliver, and is
@@ -186,6 +196,7 @@ func (p *Processor) RetrySuppressions(ctx context.Context, shopID, automationID 
 			OrderID:        pend.orderID,
 			StatusLabel:    pend.label,
 			IdempotencyKey: pend.key,
+			IntegrationID:  pend.integration,
 			fire:           instant,
 		}
 		if c, cErr := p.whatsapp.Customer(ctx, automation.ShopID, pend.customerID); cErr == nil {
@@ -254,6 +265,7 @@ func (p *Processor) pendingSends(ctx context.Context, automation *Automation) ([
 			orderID:     s.OrderID,
 			label:       s.TriggerLabel,
 			idempotency: s.IdempotencyKey,
+			integration: s.IntegrationID,
 		}
 	}
 

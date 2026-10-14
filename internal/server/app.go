@@ -12,6 +12,7 @@ import (
 	"whatsappconverty/internal/automations"
 	"whatsappconverty/internal/config"
 	"whatsappconverty/internal/converty"
+	"whatsappconverty/internal/csrf"
 	"whatsappconverty/internal/dashboard"
 	"whatsappconverty/internal/shops"
 	"whatsappconverty/internal/whatsapp"
@@ -28,11 +29,25 @@ type App struct {
 	Converty    *converty.Service
 	WhatsApp    *whatsapp.Service
 	Automations *automations.Processor
+
+	// ConvertyVerifier authenticates inbound Converty order events before they
+	// may drive a send. It defaults to converty.FailClosedVerifier, which
+	// refuses every event because Converty webhooks carry no signature; a real
+	// verifier can be substituted once a trustworthy mechanism exists.
+	ConvertyVerifier converty.EventVerifier
+
+	// CSRF is the signed double-submit token manager guarding every
+	// browser-facing state-changing request.
+	CSRF *csrf.Manager
 }
 
 func New(cfg config.Config, log *slog.Logger, pool *pgxpool.Pool) *App {
 	shopsRepo := shops.NewRepository(pool)
 	wa := whatsapp.NewService(cfg, pool, log)
+	auto := automations.NewProcessor(cfg, pool, log, wa)
+	// The delivery layer re-checks the Converty integration immediately before
+	// every send (see whatsapp.gateIntegration); give it the store-state reader.
+	wa.SetIntegrationChecker(auto)
 	return &App{
 		Cfg:         cfg,
 		Log:         log,
@@ -42,8 +57,22 @@ func New(cfg config.Config, log *slog.Logger, pool *pgxpool.Pool) *App {
 		Dashboard:   dashboard.NewRepository(pool),
 		Converty:    converty.NewService(cfg, pool, log),
 		WhatsApp:    wa,
-		Automations: automations.NewProcessor(cfg, pool, log, wa),
+		Automations: auto,
+
+		ConvertyVerifier: converty.FailClosedVerifier{},
+		CSRF:             csrf.New(cfg.SuperkitSecret, cfg.IsProduction()),
 	}
+}
+
+// csrfExemptPaths are the routes CSRF protection is skipped for. They are
+// server-to-server callbacks (Meta and Converty webhooks), which are not
+// browser requests and authenticate by their own means. Marking the health
+// checks exempt just avoids handing them a cookie.
+var csrfExemptPaths = map[string]bool{
+	"/webhooks/converty": true,
+	"/webhooks/meta":     true,
+	"/healthz":           true,
+	"/readyz":            true,
 }
 
 func (a *App) InitializeMiddleware(r *chi.Mux) {
@@ -51,6 +80,8 @@ func (a *App) InitializeMiddleware(r *chi.Mux) {
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
 	r.Use(a.loggingMiddleware)
+	r.Use(a.bodyLimitMiddleware)
+	r.Use(a.CSRF.Middleware(csrfExemptPaths, []string{"/static/"}))
 
 	if a.Cfg.IsProduction() {
 		r.Use(middleware.Compress(5))
@@ -109,7 +140,7 @@ func (a *App) InitializeRoutes(r *chi.Mux) {
 		pr.Post("/automations/{id}/retry-held", kit.Handler(a.handleAutomationRetryHeld))
 		pr.Get("/templates", kit.Handler(a.handleTemplates))
 		pr.Post("/templates/create", kit.Handler(a.handleTemplateCreate))
-		pr.Get("/templates/refresh", kit.Handler(a.handleTemplateRefresh))
+		pr.Post("/templates/refresh", kit.Handler(a.handleTemplateRefresh))
 		pr.Get("/whatsapp", kit.Handler(a.handleWhatsappStatus))
 		pr.Get("/settings", kit.Handler(a.handleWhatsappSettings))
 		pr.Post("/settings/phone", kit.Handler(a.handleWhatsappSettingsPhone))

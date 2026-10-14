@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -30,6 +31,9 @@ const (
 	ErrCodeRateLimited               = "rate_limited"
 	ErrCodeMetaAPIError              = "meta_api_error"
 	ErrCodeDuplicateSend             = "duplicate_send"
+	// ErrCodeIntegrationInactive refuses a send whose Converty store is
+	// deactivated, deleted, unknown, or unverifiable at delivery time.
+	ErrCodeIntegrationInactive = "converty_integration_inactive"
 )
 
 // SendRejection records why a message was refused before Meta was contacted.
@@ -98,6 +102,10 @@ type SendRequest struct {
 	// the merchant can read one automation's send history. uuid.Nil means the
 	// send was not automation-driven (API, test), and stays unlinked.
 	AutomationID uuid.UUID
+	// IntegrationID is the connected Converty store this send belongs to. It is
+	// re-checked at delivery time by the integration gate; uuid.Nil marks a send
+	// not tied to a store.
+	IntegrationID uuid.UUID
 }
 
 // SendResult reports the outcome of an accepted send.
@@ -376,6 +384,47 @@ func buildComponents(raw []byte, vars map[string]string) ([]TemplateComponent, e
 	return out, nil
 }
 
+// ErrIntegrationUnverifiable is returned when an integration-scoped send
+// cannot be checked against the canonical store state — either because the
+// sender has no integration id for an automation-triggered send (a legacy or
+// misconfigured payload) or because no integration checker is configured. It is
+// a plain (retryable) error, never a silent permit.
+var ErrIntegrationUnverifiable = errors.New("whatsapp: converty integration state cannot be verified")
+
+// gateIntegration is the single fail-closed integration-state gate every send
+// path runs immediately before delivery (inline, retry-held and queued worker
+// sends all funnel through SendTemplateMessage). It reads the canonical
+// converty_integrations row at send time and never trusts a previously captured
+// active boolean.
+//
+//   - integration id set and active            -> nil (allowed)
+//   - integration id set, inactive/missing     -> *SendRejection (refused)
+//   - integration id set, lookup error         -> error (retry, never permit)
+//   - integration id nil, automation-driven    -> refused: a legacy or
+//     misconfigured sender must not bypass the gate
+//   - integration id nil, not automation-driven -> nil (not integration scoped)
+func (s *Service) gateIntegration(ctx context.Context, req SendRequest) error {
+	if req.IntegrationID == uuid.Nil {
+		if req.AutomationID == uuid.Nil {
+			return nil
+		}
+		return NewSendRejection(ErrCodeIntegrationInactive,
+			"automation send has no converty integration to verify")
+	}
+	if s.integrations == nil {
+		return fmt.Errorf("%w: no integration checker configured", ErrIntegrationUnverifiable)
+	}
+	active, err := s.integrations.IntegrationActive(ctx, req.IntegrationID)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrIntegrationUnverifiable, err)
+	}
+	if !active {
+		return NewSendRejection(ErrCodeIntegrationInactive,
+			"converty integration is inactive or deleted")
+	}
+	return nil
+}
+
 // SendTemplateMessage is the full tenant-scoped send flow: it loads the
 // merchant/customer/consent/template state, applies CAN_SEND, enforces rate
 // and idempotency controls, then calls Meta and records the outcome. Any
@@ -417,6 +466,16 @@ func (s *Service) SendTemplateMessage(ctx context.Context, req SendRequest) (*Se
 			s.log.Warn("whatsapp send rejected",
 				"shop_id", req.ShopID, "customer_id", req.CustomerID,
 				"template_id", req.TemplateID, "code", rej.Code, "reason", rej.Reason)
+		}
+		return nil, err
+	}
+
+	if err := s.gateIntegration(ctx, req); err != nil {
+		var rej *SendRejection
+		if errors.As(err, &rej) {
+			s.log.Warn("whatsapp send rejected (integration gate)",
+				"shop_id", req.ShopID, "automation_id", req.AutomationID,
+				"integration_id", req.IntegrationID, "code", rej.Code, "reason", rej.Reason)
 		}
 		return nil, err
 	}
@@ -477,6 +536,11 @@ type TestTemplateRequest struct {
 	TemplateID uuid.UUID
 	To         string
 	Variables  map[string]string
+	// ActorID is the authenticated user who initiated the test. It scopes the
+	// dedicated test-send budget so one member cannot exhaust another's.
+	ActorID uuid.UUID
+	// AutomationID is recorded for the audit trail only.
+	AutomationID uuid.UUID
 }
 
 var phonePattern = regexp.MustCompile(`^\+?[0-9]{8,15}$`)
@@ -499,6 +563,15 @@ func (s *Service) SendTemplateTest(ctx context.Context, req TestTemplateRequest)
 	to := strings.Join(strings.Fields(req.To), "")
 	if !phonePattern.MatchString(to) {
 		return nil, NewSendRejection(ErrCodeTemplateVariableInvalid, "invalid phone number — use international format with country code, e.g. +21624118849")
+	}
+
+	// The dedicated test-send budget is charged before any template read, message
+	// row or Meta call. It is the single gate that keeps a compromised or
+	// careless owner from using the test path as an unbounded sender.
+	if s.rate != nil {
+		if err := s.rate.AllowTestSend(ctx, req.ShopID, req.ActorID); err != nil {
+			return nil, err
+		}
 	}
 
 	template, err := s.templateState(ctx, req.ShopID, req.TemplateID)
@@ -565,7 +638,7 @@ func (s *Service) SendTemplateTest(ctx context.Context, req TestTemplateRequest)
 		s.log.Error("whatsapp: could not mark test message sent", "error", err)
 	}
 	s.log.Info("whatsapp test message sent",
-		"template", template.Name, "to", to, "meta_message_id", metaID)
+		"shop_id", req.ShopID, "template", template.Name, "meta_message_id", metaID)
 
 	return &SendResult{MessageID: msgID, MetaMessageID: metaID, Status: "sent"}, nil
 }

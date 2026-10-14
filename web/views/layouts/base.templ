@@ -27,6 +27,7 @@ templ Shell(page components.Page) {
 			<link rel="stylesheet" href="/static/css/styles.css"/>
 			<script src="/static/js/htmx.min.js" defer></script>
 			<script src="/static/js/alpine.min.js" defer></script>
+			<script src="/static/js/csrf.js" defer></script>
 		</head>
 		<body class="h-full bg-slate-100 text-slate-900 antialiased">
 			<div class="flex min-h-full" x-data="{ sidebarOpen: false }">
@@ -84,6 +85,7 @@ templ AuthLayout(title string) {
 			<title>{ title } · Converty WhatsApp</title>
 			<link rel="stylesheet" href="/static/css/styles.css"/>
 			<script src="/static/js/htmx.min.js" defer></script>
+			<script src="/static/js/csrf.js" defer></script>
 		</head>
 		<body class="flex min-h-full items-center justify-center bg-slate-100 px-4 py-12 text-slate-900">
 			<div class="w-full max-w-md">

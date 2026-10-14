@@ -69,6 +69,13 @@ type Config struct {
 	// PricePerMessage is the per-message list price (USD) shown on the owner's
 	// Billing page to estimate the shop's spend from its message volume.
 	PricePerMessage float64
+
+	// TestSendLimit and TestSendWindow bound the dedicated test-send budget a
+	// single owner may spend per shop and per window. Test sends always cost the
+	// platform a real message, so they get their own small, strict ceiling that
+	// is independent of the customer-send rate limits.
+	TestSendLimit  int
+	TestSendWindow time.Duration
 }
 
 // Load reads configuration from the environment.
@@ -105,6 +112,8 @@ func Load() Config {
 		MetaAppSecret:           getenv("META_APP_SECRET", ""),
 		MarketingPurgeDelay:     getenvDuration("MARKETING_PURGE_DELAY", 15*time.Minute),
 		PricePerMessage:         getenvFloat("PRICE_PER_MESSAGE", 0.030),
+		TestSendLimit:           getenvInt("TEST_SEND_RATE_LIMIT", 10),
+		TestSendWindow:          getenvDuration("TEST_SEND_RATE_WINDOW", time.Hour),
 	}
 }
 
@@ -143,6 +152,15 @@ func getenvFloat(name string, def float64) float64 {
 	if v := getenv(name, ""); v != "" {
 		if f, err := strconv.ParseFloat(v, 64); err == nil {
 			return f
+		}
+	}
+	return def
+}
+
+func getenvInt(name string, def int) int {
+	if v := getenv(name, ""); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
 		}
 	}
 	return def

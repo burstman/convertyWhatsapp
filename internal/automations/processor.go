@@ -36,7 +36,11 @@ func NewProcessor(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, wa *w
 // ConvertyEvent is the normalized subset of an order webhook that automation
 // needs.
 type ConvertyEvent struct {
-	ShopID        uuid.UUID
+	ShopID uuid.UUID
+	// IntegrationID is the connected store the event was attributed to. It
+	// rides along on any queued send so the worker can re-confirm the store is
+	// still active at delivery time.
+	IntegrationID uuid.UUID
 	OrderStatus   string
 	OrderID       string
 	CustomerName  string
@@ -44,9 +48,14 @@ type ConvertyEvent struct {
 }
 
 // OnConvertyEvent feeds one captured Converty order event through the
-// automation pipeline: the customer is learned (consent for the template's
-// category is granted on the matching automation send) and the order-status
-// automation fires if configured.
+// automation pipeline: the customer is learned and the order-status automation
+// fires if configured.
+//
+// Consent is never created here. A webhook (or the phone number on an order)
+// is not proof of WhatsApp opt-in, so this path only ever reads consent through
+// the send gate; opt-in must have been recorded beforehand through the
+// authenticated merchant API. An event with no consent therefore produces no
+// send.
 func (p *Processor) OnConvertyEvent(ctx context.Context, e ConvertyEvent) error {
 	if e.ShopID == uuid.Nil {
 		return nil
@@ -78,6 +87,7 @@ func (p *Processor) OnConvertyEvent(ctx context.Context, e ConvertyEvent) error 
 
 	_, err = p.send(ctx, SendInput{
 		ShopID:         e.ShopID,
+		IntegrationID:  e.IntegrationID,
 		AutomationID:   automation.ID,
 		CustomerID:     cid,
 		TemplateID:     automation.TemplateID,
@@ -95,6 +105,9 @@ func (p *Processor) OnConvertyEvent(ctx context.Context, e ConvertyEvent) error 
 // the send may happen (see fireRule below).
 type SendInput struct {
 	ShopID uuid.UUID
+	// IntegrationID is the connected store whose event triggered this send.
+	// uuid.Nil for sends not tied to a Converty store.
+	IntegrationID uuid.UUID
 	// AutomationID is the automation this send belongs to. It rides along so the
 	// message row can be attributed, which is what the merchant's per-automation
 	// send history is built from.
@@ -233,9 +246,6 @@ func (p *Processor) send(ctx context.Context, in SendInput) (sendOutcome, error)
 	}
 
 	purpose := t.Category
-	if err := p.whatsapp.GrantConsent(ctx, in.ShopID, in.CustomerID, purpose, "automation", in.OrderID); err != nil {
-		p.log.Warn("automation: consent grant failed", "shop_id", in.ShopID, "error", err)
-	}
 
 	vars, missing := buildVariables(t, in)
 	if len(missing) > 0 {
@@ -250,6 +260,7 @@ func (p *Processor) send(ctx context.Context, in SendInput) (sendOutcome, error)
 
 	job := whatsapp.SendWhatsAppTemplateJob{
 		ShopID:          in.ShopID,
+		IntegrationID:   in.IntegrationID,
 		AutomationID:    in.AutomationID,
 		CustomerID:      in.CustomerID,
 		TemplateID:      in.TemplateID,
@@ -339,6 +350,7 @@ func toSendRequest(job whatsapp.SendWhatsAppTemplateJob) whatsapp.SendRequest {
 		ShopID:          job.ShopID,
 		CustomerID:      job.CustomerID,
 		AutomationID:    job.AutomationID,
+		IntegrationID:   job.IntegrationID,
 		TemplateID:      job.TemplateID,
 		ConvertyOrderID: job.ConvertyOrderID,
 		Purpose:         job.Purpose,

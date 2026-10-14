@@ -5,11 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 // WebhookEvent is a raw Converty webhook delivery with best-effort parsed
@@ -27,6 +25,15 @@ type WebhookEvent struct {
 	ReceivedAt    time.Time
 	// Duplicate reports whether the body was already ingested.
 	Duplicate bool
+	// IntegrationID is the connected Converty store the payload's store
+	// reference resolved to, when any. IntegrationFound is false when the
+	// payload names no store or names one the platform has not connected, and
+	// IntegrationActive mirrors the canonical converty_integrations.active
+	// column at ingestion time. Both are required before an event may drive an
+	// automation (see server.dispatchConvertyEvent).
+	IntegrationID     uuid.UUID
+	IntegrationFound  bool
+	IntegrationActive bool
 }
 
 // webhookDecoded holds the fields we defensively extract from a Converty
@@ -61,41 +68,54 @@ func (s *Service) CaptureWebhook(ctx context.Context, body []byte) (WebhookEvent
 	event.PayloadHash = hash
 	event.ReceivedAt = time.Now().UTC()
 
-	shopID, _ := s.lookupShopID(ctx, decoded)
+	integ, found := s.lookupIntegration(ctx, decoded)
 	tag, err := s.pool.Exec(ctx, `
 		INSERT INTO order_events (shop_id, event_id, event_type, order_id, order_status, payload, payload_hash, processed_at)
 		VALUES ($1, NULL, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (payload_hash) DO NOTHING`,
-		nullableUUID(shopID), decoded.EventType, decoded.OrderID, decoded.OrderStatus, body, hash, event.ReceivedAt,
+		nullableUUID(integ.shopID), decoded.EventType, decoded.OrderID, decoded.OrderStatus, body, hash, event.ReceivedAt,
 	)
 	if err != nil {
 		return WebhookEvent{}, err
 	}
-	event.ShopID = shopID
+	event.ShopID = integ.shopID
+	event.IntegrationID = integ.id
+	event.IntegrationFound = found
+	event.IntegrationActive = found && integ.active
 	event.Duplicate = tag.RowsAffected() == 0
 
 	return event, nil
 }
 
-// lookupShopID attributes a payload to a shop by matching the store id or
-// slug it references against a connected integration.
-func (s *Service) lookupShopID(ctx context.Context, d webhookDecoded) (uuid.UUID, error) {
+// webhookIntegration is the canonical integration record an inbound payload's
+// store reference resolves to.
+type webhookIntegration struct {
+	id     uuid.UUID
+	shopID uuid.UUID
+	active bool
+}
+
+// lookupIntegration attributes a payload to a shop by matching the store id or
+// slug it references against a connected integration. It always reads the
+// canonical row (including the active flag) rather than trusting anything the
+// payload claims, so a deactivated integration is recognized as such.
+func (s *Service) lookupIntegration(ctx context.Context, d webhookDecoded) (webhookIntegration, bool) {
 	if d.StoreID == "" && d.StoreSlug == "" {
-		return uuid.Nil, errors.New("payload carries no store reference")
+		return webhookIntegration{}, false
 	}
-	var id uuid.UUID
+	var out webhookIntegration
 	err := s.pool.QueryRow(ctx, `
-		SELECT shop_id
+		SELECT id, shop_id, active
 		FROM converty_integrations
 		WHERE ($1 <> '' AND converty_store_id = $1)
 		   OR ($2 <> '' AND store_slug = $2)
 		LIMIT 1`,
 		d.StoreID, d.StoreSlug,
-	).Scan(&id)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return uuid.Nil, errors.New("no integration matches payload store")
+	).Scan(&out.id, &out.shopID, &out.active)
+	if err != nil {
+		return webhookIntegration{}, false
 	}
-	return id, err
+	return out, true
 }
 
 // decodeWebhook walks a payload looking for the known field names under any

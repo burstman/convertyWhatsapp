@@ -54,6 +54,7 @@ func (a *App) handleLoginPost(k *kit.Kit) error {
 
 	sess := k.GetSession(auth.SessionCookieName)
 	sess.Values["sessionToken"] = token
+	applySessionOptions(sess, a.Cfg.IsProduction())
 	if err := sess.Save(k.Request, k.Response); err != nil {
 		return err
 	}
@@ -99,6 +100,7 @@ func (a *App) handleRegisterPost(k *kit.Kit) error {
 
 	sess := k.GetSession(auth.SessionCookieName)
 	sess.Values["sessionToken"] = token
+	applySessionOptions(sess, a.Cfg.IsProduction())
 	if err := sess.Save(k.Request, k.Response); err != nil {
 		return err
 	}
@@ -111,6 +113,7 @@ func (a *App) handleLogout(k *kit.Kit) error {
 		_ = a.Auth.Logout(k.Request.Context(), token)
 	}
 	sess.Options.MaxAge = -1
+	applySessionOptions(sess, a.Cfg.IsProduction())
 	_ = sess.Save(k.Request, k.Response)
 	return k.Redirect(http.StatusSeeOther, "/login")
 }

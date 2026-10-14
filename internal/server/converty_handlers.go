@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -24,14 +25,12 @@ import (
 	vdashboard "whatsappconverty/web/views/dashboard"
 )
 
-const maxWebhookBody = 2 << 20
-
 // handleConvertyWebhook is the target Converty POSTs order events to. The
 // payload shape is not yet documented, so each delivery is persisted
 // verbatim into order_events (deduplicated by body hash) with best-effort
 // parsed fields, and we always acknowledge with 200.
 func (a *App) handleConvertyWebhook(k *kit.Kit) error {
-	body, err := io.ReadAll(io.LimitReader(k.Request.Body, maxWebhookBody))
+	body, err := io.ReadAll(io.LimitReader(k.Request.Body, webhookBodyLimitBytes))
 	if err != nil {
 		return err
 	}
@@ -45,38 +44,74 @@ func (a *App) handleConvertyWebhook(k *kit.Kit) error {
 	a.Log.Info("converty webhook captured",
 		"duplicate", event.Duplicate,
 		"shop_id", event.ShopID,
+		"integration_id", event.IntegrationID,
+		"integration_active", event.IntegrationActive,
 		"event_type", event.EventType,
 		"order_id", event.OrderID,
 		"order_status", event.OrderStatus,
 		"body", truncateBytes(body, 800),
 	)
 
-	// Best-effort: learn the merchant's customers from the orders Converty
-	// reports, so a phone number on record can be linked to a consent record
-	// later. Never treat the phone number itself as WhatsApp consent.
-	if event.ShopID != uuid.Nil && event.CustomerPhone != "" {
-		if _, cErr := a.WhatsApp.UpsertCustomer(k.Request.Context(), event.ShopID, event.CustomerName, event.CustomerPhone); cErr != nil {
-			a.Log.Warn("converty webhook customer upsert failed", "shop_id", event.ShopID, "error", cErr)
-		}
-	}
-
-	// Feed genuine events through the automation pipeline. Duplicates are
-	// re-ingested (the raw payload is stored verbatim) but must not fire the
-	// merchant's automations twice.
-	if !event.Duplicate {
-		if err := a.Automations.OnConvertyEvent(k.Request.Context(), automations.ConvertyEvent{
-			ShopID:        event.ShopID,
-			OrderStatus:   event.OrderStatus,
-			OrderID:       event.OrderID,
-			CustomerName:  event.CustomerName,
-			CustomerPhone: event.CustomerPhone,
-		}); err != nil {
-			a.Log.Warn("converty webhook automation pipeline failed",
-				"shop_id", event.ShopID, "order_id", event.OrderID, "error", err)
-		}
-	}
+	// The captured payload is untrusted input. It may reach the automation
+	// pipeline only through the verification gate below; an unverified or
+	// deactivated-store delivery is stored for audit but never sends.
+	dispatchConvertyEvent(k.Request.Context(), event, a.ConvertyVerifier, a.Automations, a.Log)
 
 	return k.Text(http.StatusOK, "ok")
+}
+
+// convertyEventSink consumes a verified, active-store order event. It is
+// satisfied by *automations.Processor.
+type convertyEventSink interface {
+	OnConvertyEvent(ctx context.Context, e automations.ConvertyEvent) error
+}
+
+// dispatchConvertyEvent is the single trust boundary between an inbound
+// Converty webhook and the automation pipeline. A captured event reaches the
+// sink only when all of the following hold:
+//
+//   - it is not a duplicate of an already-ingested body;
+//   - its store reference resolves to an integration this platform connected;
+//   - that integration is currently active (read from the canonical row, not
+//     from anything the payload claims);
+//   - the verifier confirms the event against a trustworthy source.
+//
+// Every other outcome drops the event (fail closed) and logs why. The raw
+// payload has already been persisted by CaptureWebhook, so nothing is lost for
+// audit, but no customer is contacted and no consent record is created.
+func dispatchConvertyEvent(ctx context.Context, ev converty.WebhookEvent, verifier converty.EventVerifier, sink convertyEventSink, log *slog.Logger) {
+	switch {
+	case ev.Duplicate:
+		return
+	case ev.ShopID == uuid.Nil || !ev.IntegrationFound:
+		log.Warn("converty webhook dropped: store is not a connected integration",
+			"shop_id", ev.ShopID, "order_id", ev.OrderID)
+		return
+	case !ev.IntegrationActive:
+		log.Info("converty webhook dropped: integration is deactivated",
+			"shop_id", ev.ShopID, "integration_id", ev.IntegrationID, "order_id", ev.OrderID)
+		return
+	}
+	if verifier == nil {
+		log.Error("converty webhook dropped: no event verifier configured", "shop_id", ev.ShopID)
+		return
+	}
+	if err := verifier.VerifyOrderEvent(ctx, ev.ShopID, ev.IntegrationID, ev.OrderID, ev.OrderStatus, ev.CustomerPhone); err != nil {
+		log.Warn("converty webhook dropped: event could not be verified",
+			"shop_id", ev.ShopID, "integration_id", ev.IntegrationID, "order_id", ev.OrderID, "error", err)
+		return
+	}
+	if err := sink.OnConvertyEvent(ctx, automations.ConvertyEvent{
+		ShopID:        ev.ShopID,
+		IntegrationID: ev.IntegrationID,
+		OrderStatus:   ev.OrderStatus,
+		OrderID:       ev.OrderID,
+		CustomerName:  ev.CustomerName,
+		CustomerPhone: ev.CustomerPhone,
+	}); err != nil {
+		log.Warn("converty webhook automation pipeline failed",
+			"shop_id", ev.ShopID, "order_id", ev.OrderID, "error", err)
+	}
 }
 
 func truncateBytes(b []byte, n int) string {
@@ -155,6 +190,7 @@ func (a *App) handleConvertyConnect(k *kit.Kit) error {
 
 	sess := k.GetSession(auth.SessionCookieName)
 	sess.Values["converty_oauth_state"] = state
+	applySessionOptions(sess, a.Cfg.IsProduction())
 	if err := sess.Save(k.Request, k.Response); err != nil {
 		return err
 	}
@@ -169,6 +205,7 @@ func (a *App) handleConvertyCallback(k *kit.Kit) error {
 	sess := k.GetSession(auth.SessionCookieName)
 	savedState, _ := sess.Values["converty_oauth_state"].(string)
 	delete(sess.Values, "converty_oauth_state")
+	applySessionOptions(sess, a.Cfg.IsProduction())
 	_ = sess.Save(k.Request, k.Response)
 
 	state := k.Request.URL.Query().Get("state")

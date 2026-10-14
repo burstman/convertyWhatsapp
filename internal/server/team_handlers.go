@@ -31,8 +31,12 @@ var redeemSchema = validate.Schema{
 // handleTeam renders the owner-only member management page: the shop's users,
 // the invite form, and the one-time invite link (shown right after an invite).
 func (a *App) handleTeamGet(k *kit.Kit) error {
-	if err := a.requireOwner(k); err != nil {
+	allowed, err := a.requireOwner(k)
+	if err != nil {
 		return err
+	}
+	if !allowed {
+		return nil
 	}
 
 	principal := auth.FromKit(k)
@@ -80,8 +84,12 @@ func (a *App) handleTeamGet(k *kit.Kit) error {
 // the freshly generated one-time invite link is shown once for the owner to
 // copy and send.
 func (a *App) handleTeamInvitePost(k *kit.Kit) error {
-	if err := a.requireOwner(k); err != nil {
+	allowed, err := a.requireOwner(k)
+	if err != nil {
 		return err
+	}
+	if !allowed {
+		return nil
 	}
 
 	principal := auth.FromKit(k)
@@ -111,8 +119,12 @@ func (a *App) handleTeamInvitePost(k *kit.Kit) error {
 // handleTeamDeletePost removes a member account. The owner can never remove
 // themselves or another owner (the service only ever deletes 'member' rows).
 func (a *App) handleTeamDeletePost(k *kit.Kit) error {
-	if err := a.requireOwner(k); err != nil {
+	allowed, err := a.requireOwner(k)
+	if err != nil {
 		return err
+	}
+	if !allowed {
+		return nil
 	}
 
 	principal := auth.FromKit(k)
@@ -172,6 +184,7 @@ func (a *App) handleRedeemInvitePost(k *kit.Kit) error {
 
 	sess := k.GetSession(auth.SessionCookieName)
 	sess.Values["sessionToken"] = sessionToken
+	applySessionOptions(sess, a.Cfg.IsProduction())
 	if err := sess.Save(k.Request, k.Response); err != nil {
 		return err
 	}

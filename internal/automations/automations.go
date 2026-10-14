@@ -395,6 +395,26 @@ func (p *Processor) AutomationEnabled(ctx context.Context, id uuid.UUID) (bool, 
 	return enabled, nil
 }
 
+// IntegrationActive reports whether a Converty integration is currently
+// active. A queued Converty send is re-checked through it immediately before
+// delivery, so deactivating a store also stops messages that were already
+// queued for it. Unknown ids report false, so a store that was deleted cancels
+// its sends too.
+func (p *Processor) IntegrationActive(ctx context.Context, id uuid.UUID) (bool, error) {
+	if id == uuid.Nil {
+		return true, nil
+	}
+	var active bool
+	err := p.pool.QueryRow(ctx, `SELECT active FROM converty_integrations WHERE id = $1`, id).Scan(&active)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return active, nil
+}
+
 // match returns the enabled automation for a trigger, or an empty automation
 // when none (or one whose template was deleted) is configured. The template
 // join pulls in the lifecycle gates so no row can match a template the send

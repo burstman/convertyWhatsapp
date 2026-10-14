@@ -47,7 +47,7 @@ func TemplatesPage(page components.Page, templates []whatsapp.MerchantTemplate, 
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"space-y-6\"><div class=\"flex items-center justify-between\"><div><h2 class=\"text-xl font-semibold text-slate-900\">Templates</h2><p class=\"text-sm text-slate-500\">Only <span class=\"font-medium text-emerald-600\">approved</span> templates can be sent. Approval is decided by Meta's review — not by us.</p></div><a href=\"/templates/refresh\" class=\"inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50\">Refresh from Meta</a></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"space-y-6\"><div class=\"flex items-center justify-between\"><div><h2 class=\"text-xl font-semibold text-slate-900\">Templates</h2><p class=\"text-sm text-slate-500\">Only <span class=\"font-medium text-emerald-600\">approved</span> templates can be sent. Approval is decided by Meta's review — not by us.</p></div><form method=\"post\" action=\"/templates/refresh\"><button type=\"submit\" class=\"inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50\">Refresh from Meta</button></form></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -59,7 +59,7 @@ func TemplatesPage(page components.Page, templates []whatsapp.MerchantTemplate, 
 				var templ_7745c5c3_Var3 string
 				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(flash.Error)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/dashboard/templates.templ`, Line: 27, Col: 107}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/dashboard/templates.templ`, Line: 29, Col: 107}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 				if templ_7745c5c3_Err != nil {
@@ -78,7 +78,7 @@ func TemplatesPage(page components.Page, templates []whatsapp.MerchantTemplate, 
 				var templ_7745c5c3_Var4 string
 				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(flash.Info)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/dashboard/templates.templ`, Line: 30, Col: 115}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/dashboard/templates.templ`, Line: 32, Col: 115}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 				if templ_7745c5c3_Err != nil {
@@ -111,7 +111,7 @@ func TemplatesPage(page components.Page, templates []whatsapp.MerchantTemplate, 
 					var templ_7745c5c3_Var5 string
 					templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(t.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/dashboard/templates.templ`, Line: 108, Col: 66}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/dashboard/templates.templ`, Line: 110, Col: 66}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 					if templ_7745c5c3_Err != nil {
@@ -124,7 +124,7 @@ func TemplatesPage(page components.Page, templates []whatsapp.MerchantTemplate, 
 					var templ_7745c5c3_Var6 string
 					templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(t.Language)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/dashboard/templates.templ`, Line: 109, Col: 58}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/dashboard/templates.templ`, Line: 111, Col: 58}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 					if templ_7745c5c3_Err != nil {
@@ -137,7 +137,7 @@ func TemplatesPage(page components.Page, templates []whatsapp.MerchantTemplate, 
 					var templ_7745c5c3_Var7 string
 					templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(t.Category)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/dashboard/templates.templ`, Line: 110, Col: 58}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/dashboard/templates.templ`, Line: 112, Col: 58}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 					if templ_7745c5c3_Err != nil {
@@ -164,7 +164,7 @@ func TemplatesPage(page components.Page, templates []whatsapp.MerchantTemplate, 
 							var templ_7745c5c3_Var8 string
 							templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(t.MetaWarnings)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/dashboard/templates.templ`, Line: 118, Col: 74}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/dashboard/templates.templ`, Line: 120, Col: 74}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 							if templ_7745c5c3_Err != nil {
@@ -188,7 +188,7 @@ func TemplatesPage(page components.Page, templates []whatsapp.MerchantTemplate, 
 							var templ_7745c5c3_Var9 string
 							templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(t.MetaWarnings)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/dashboard/templates.templ`, Line: 129, Col: 74}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/dashboard/templates.templ`, Line: 131, Col: 74}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 							if templ_7745c5c3_Err != nil {
@@ -216,7 +216,7 @@ func TemplatesPage(page components.Page, templates []whatsapp.MerchantTemplate, 
 							var templ_7745c5c3_Var10 string
 							templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(t.RejectionReason)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/dashboard/templates.templ`, Line: 134, Col: 69}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/dashboard/templates.templ`, Line: 136, Col: 69}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 							if templ_7745c5c3_Err != nil {
@@ -306,7 +306,7 @@ func ApprovalBadge(status string) templ.Component {
 			var templ_7745c5c3_Var12 string
 			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(status)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/dashboard/templates.templ`, Line: 201, Col: 97}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/dashboard/templates.templ`, Line: 203, Col: 97}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 			if templ_7745c5c3_Err != nil {

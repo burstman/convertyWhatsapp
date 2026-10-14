@@ -59,7 +59,7 @@ func daysLabel(days []int) string {
 	return strings.Join(parts, ", ")
 }
 
-templ automationCardBody(a automations.Automation, templateNames map[uuid.UUID]string, templateBodies map[uuid.UUID]string) {
+templ automationCardBody(a automations.Automation, templateNames map[uuid.UUID]string, templateBodies map[uuid.UUID]string, isOwner bool) {
 	<div class="p-5">
 		<div class="flex items-start justify-between gap-4">
 			<div>
@@ -92,7 +92,7 @@ templ automationCardBody(a automations.Automation, templateNames map[uuid.UUID]s
 					class="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50">History</a>
 				<a href={ templ.SafeURL("/automations/" + a.ID.String() + "/edit") }
 					class="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50">Edit</a>
-				if a.TemplateID != uuid.Nil {
+				if a.TemplateID != uuid.Nil && isOwner {
 					<button type="button" @click="testOpen = true"
 						class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100">Test</button>
 				}
@@ -140,7 +140,7 @@ templ automationCardBody(a automations.Automation, templateNames map[uuid.UUID]s
 		</div>
 	</div>
 
-	if a.TemplateID != uuid.Nil {
+	if a.TemplateID != uuid.Nil && isOwner {
 		<div x-show="testOpen" x-cloak @keydown.escape.window="testOpen = false"
 			class="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60"
 			@click.self="testOpen = false"
@@ -227,7 +227,7 @@ templ AutomationsPage(page components.Page, list []automations.Automation, templ
 			} else {
 				for _, a := range list {
 					<div class={ templ.SafeClass(borderClass(a.Enabled)) } x-data="{ testOpen: false }">
-						@automationCardBody(a, templateNames, templateBodies)
+						@automationCardBody(a, templateNames, templateBodies, page.IsOwner)
 					</div>
 				}
 			}

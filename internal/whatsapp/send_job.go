@@ -18,6 +18,13 @@ import (
 // everything needed without re-deriving context.
 type SendWhatsAppTemplateJob struct {
 	ShopID uuid.UUID `json:"shop_id"`
+	// IntegrationID is the connected Converty store whose event queued this
+	// send, when there was one. The delivery-layer integration gate re-checks
+	// that the store is still active at send time, so deactivating an
+	// integration also stops a message already parked in the queue. Empty for
+	// non-Converty sends (and for legacy jobs, which are refused rather than
+	// delivered unverified).
+	IntegrationID uuid.UUID `json:"integration_id,omitempty"`
 	// AutomationID is the automation that queued this send, empty for a send that
 	// did not come from one. The worker re-checks it before sending so pausing an
 	// automation also stops a message that was already queued — including one
@@ -75,6 +82,7 @@ func (s *Service) HandleSendWhatsAppTemplate(ctx context.Context, payload []byte
 		Variables:       job.Variables,
 		IdempotencyKey:  job.IdempotencyKey,
 		AutomationID:    job.AutomationID,
+		IntegrationID:   job.IntegrationID,
 	})
 	var rej *SendRejection
 	if errors.As(err, &rej) {

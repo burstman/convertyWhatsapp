@@ -67,7 +67,7 @@ func daysLabel(days []int) string {
 	return strings.Join(parts, ", ")
 }
 
-func automationCardBody(a automations.Automation, templateNames map[uuid.UUID]string, templateBodies map[uuid.UUID]string) templ.Component {
+func automationCardBody(a automations.Automation, templateNames map[uuid.UUID]string, templateBodies map[uuid.UUID]string, isOwner bool) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -197,7 +197,7 @@ func automationCardBody(a automations.Automation, templateNames map[uuid.UUID]st
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if a.TemplateID != uuid.Nil {
+		if a.TemplateID != uuid.Nil && isOwner {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<button type=\"button\" @click=\"testOpen = true\" class=\"rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100\">Test</button>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -336,7 +336,7 @@ func automationCardBody(a automations.Automation, templateNames map[uuid.UUID]st
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if a.TemplateID != uuid.Nil {
+		if a.TemplateID != uuid.Nil && isOwner {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "<div x-show=\"testOpen\" x-cloak @keydown.escape.window=\"testOpen = false\" class=\"fixed inset-0 z-50 overflow-y-auto bg-slate-900/60\" @click.self=\"testOpen = false\" x-transition.opacity><div class=\"flex min-h-full items-start justify-center p-4\"><div class=\"w-full max-w-md rounded-xl bg-white p-6 shadow-xl\"><div class=\"flex items-start justify-between gap-4\"><div><h4 class=\"text-base font-semibold text-slate-900\">Test message</h4><p class=\"mt-1 text-sm text-slate-500\">Template: <span class=\"font-medium text-slate-700\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -476,7 +476,7 @@ func AutomationsPage(page components.Page, list []automations.Automation, templa
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = automationCardBody(a, templateNames, templateBodies).Render(ctx, templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = automationCardBody(a, templateNames, templateBodies, page.IsOwner).Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}

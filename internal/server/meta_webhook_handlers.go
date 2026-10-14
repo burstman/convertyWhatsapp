@@ -9,8 +9,6 @@ import (
 	"whatsappconverty/internal/whatsapp"
 )
 
-const maxMetaWebhookBody = 2 << 20
-
 // handleMetaWebhookVerify answers Meta's GET subscription handshake. The
 // configured hub.verify_token must match, otherwise Meta's subscribe call
 // fails and nothing is registered.
@@ -32,7 +30,7 @@ func (a *App) handleMetaWebhookVerify(k *kit.Kit) error {
 // are never returned to any merchant. Status updates are idempotent and only
 // ever move a message forward.
 func (a *App) handleMetaWebhook(k *kit.Kit) error {
-	body, err := io.ReadAll(io.LimitReader(k.Request.Body, maxMetaWebhookBody))
+	body, err := io.ReadAll(io.LimitReader(k.Request.Body, webhookBodyLimitBytes))
 	if err != nil {
 		return err
 	}
