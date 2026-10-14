@@ -76,6 +76,10 @@ type Config struct {
 	// is independent of the customer-send rate limits.
 	TestSendLimit  int
 	TestSendWindow time.Duration
+
+	// Admin bootstrap
+	AdminEmail    string
+	AdminPassword string
 }
 
 // Load reads configuration from the environment.
@@ -114,6 +118,8 @@ func Load() Config {
 		PricePerMessage:         getenvFloat("PRICE_PER_MESSAGE", 0.030),
 		TestSendLimit:           getenvInt("TEST_SEND_RATE_LIMIT", 10),
 		TestSendWindow:          getenvDuration("TEST_SEND_RATE_WINDOW", time.Hour),
+		AdminEmail:              getenv("ADMIN_EMAIL", ""),
+		AdminPassword:           getenv("ADMIN_PASSWORD", ""),
 	}
 }
 
