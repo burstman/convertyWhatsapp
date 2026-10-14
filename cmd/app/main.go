@@ -58,6 +58,7 @@ func main() {
 		}
 	}
 
+
 	// Run the job processor in-process as well as in the standalone worker: the
 	// queue is Postgres-backed and claims are leased, so two runners are safe, and
 	// the API stays able to deliver queued sends even if the worker service is
@@ -70,6 +71,9 @@ func main() {
 	}
 
 	app := server.New(cfg, logger, pool)
+	if err := app.Auth.EnsureAdmin(rootCtx, cfg.AdminEmail, cfg.AdminPassword); err != nil {
+		logger.Error("admin bootstrap failed", "error", err)
+	}
 
 	router := chi.NewMux()
 	app.InitializeMiddleware(router)
