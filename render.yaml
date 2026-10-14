@@ -45,6 +45,10 @@ services:
         sync: false # hub.verify_token echo challenge
       - key: META_APP_SECRET
         sync: false # verifies X-Hub-Signature-256 on Meta webhook deliveries
+      - key: ADMIN_EMAIL
+        sync: false # platform admin email
+      - key: ADMIN_PASSWORD
+        sync: false # platform admin password
 
   - type: worker
     name: converty-whatsapp-worker
