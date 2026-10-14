@@ -1,5 +1,5 @@
 # Render Blueprint for Converty WhatsApp Notification Platform.
-# Creates: web service + background worker.
+# Creates: web service
 # PostgreSQL is provided by Neon (external) — set DATABASE_URL manually.
 # The job queue and send rate limiter live in Postgres, so no Redis instance
 # is provisioned.
@@ -49,23 +49,3 @@ services:
         sync: false # platform admin email
       - key: ADMIN_PASSWORD
         sync: false # platform admin password
-
-  - type: worker
-    name: converty-whatsapp-worker
-    runtime: go
-    plan: free
-    buildCommand: go build -o bin/worker ./cmd/worker
-    startCommand: ./bin/worker
-    envVars:
-      - key: APP_ENV
-        value: production
-      - key: DATABASE_URL
-        sync: false # paste your Neon connection string (use the direct, non-pooled one)
-      - key: SUPERKIT_SECRET
-        sync: false
-      - key: META_SYSTEM_USER_TOKEN
-        sync: false # same long-lived platform token as the web service
-      - key: META_PHONE_NUMBER_ID
-        sync: false
-      - key: META_MESSAGING_ACCOUNT_ID
-        sync: false # defaults in code to 2883242225383967; set only when it changes
