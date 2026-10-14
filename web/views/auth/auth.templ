@@ -152,3 +152,17 @@ templ RegisterForm(values RegisterValues, errors validate.Errors) {
 		</p>
 	</div>
 }
+
+templ RegisterPending() {
+	@layouts.AuthLayout("Account pending") {
+		<div class="rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
+			<h2 class="text-lg font-semibold text-slate-900">Account created — pending approval</h2>
+			<p class="mt-2 text-sm text-slate-500">
+				Your account is awaiting admin approval. You’ll be able to sign in once an admin activates it.
+			</p>
+			<p class="mt-6 text-center text-sm text-slate-500">
+				<a href="/login" class="font-medium text-indigo-600 hover:text-indigo-500">Back to sign in</a>
+			</p>
+		</div>
+	}
+}

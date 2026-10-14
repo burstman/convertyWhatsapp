@@ -25,7 +25,7 @@ import (
 // as a card (naming, trigger, template, delivery rule), plus the create button.
 func (a *App) handleAutomations(k *kit.Kit) error {
 	principal := auth.FromKit(k)
-	shopID := principal.User.ShopID
+	shopID := principal.ActiveShop.ShopID
 	ctx := k.Request.Context()
 
 	shop, err := a.Shops.GetByID(ctx, shopID)
@@ -88,7 +88,7 @@ func (a *App) handleAutomations(k *kit.Kit) error {
 		Active:   "automations",
 		ShopName: shop.Name,
 		UserName: principal.User.Name,
-		IsOwner:  principal.User.IsOwner(),
+		IsOwner:  principal.IsAdmin(),
 	}
 	return k.Render(vdashboard.AutomationsPage(page, list, approved, names, bodies, flash))
 }
@@ -99,7 +99,7 @@ func (a *App) handleAutomations(k *kit.Kit) error {
 // to the list rather than rendering.
 func (a *App) handleAutomationHistory(k *kit.Kit) error {
 	principal := auth.FromKit(k)
-	shopID := principal.User.ShopID
+	shopID := principal.ActiveShop.ShopID
 	ctx := k.Request.Context()
 
 	shop, err := a.Shops.GetByID(ctx, shopID)
@@ -148,7 +148,7 @@ func (a *App) handleAutomationHistory(k *kit.Kit) error {
 		Active:   "automations",
 		ShopName: shop.Name,
 		UserName: principal.User.Name,
-		IsOwner:  principal.User.IsOwner(),
+		IsOwner:  principal.IsAdmin(),
 	}
 	retry := retryOutcome(k)
 	return k.Render(vdashboard.AutomationHistoryPage(page, *automation, templateName, rows, counts, suppressions, retry))
@@ -161,7 +161,7 @@ func (a *App) handleAutomationHistory(k *kit.Kit) error {
 // since is re-read before sending.
 func (a *App) handleAutomationRetryHeld(k *kit.Kit) error {
 	principal := auth.FromKit(k)
-	shopID := principal.User.ShopID
+	shopID := principal.ActiveShop.ShopID
 	ctx := k.Request.Context()
 
 	id, err := uuid.Parse(chi.URLParam(k.Request, "id"))
@@ -198,7 +198,7 @@ func (a *App) handleAutomationRetryHeld(k *kit.Kit) error {
 // user's shop.
 func (a *App) handleAutomationEdit(k *kit.Kit) error {
 	principal := auth.FromKit(k)
-	shopID := principal.User.ShopID
+	shopID := principal.ActiveShop.ShopID
 	ctx := k.Request.Context()
 
 	shop, err := a.Shops.GetByID(ctx, shopID)
@@ -261,7 +261,7 @@ func (a *App) handleAutomationEdit(k *kit.Kit) error {
 		Active:   "automations",
 		ShopName: shop.Name,
 		UserName: principal.User.Name,
-		IsOwner:  principal.User.IsOwner(),
+		IsOwner:  principal.IsAdmin(),
 	}
 	source, sourceCounts := defaultEventSource(automation)
 	return k.Render(vdashboard.AutomationFormPage(page, automation, fitSource(approved, source),
@@ -333,7 +333,7 @@ func scheduleFromForm(k *kit.Kit) (*automations.Schedule, error) {
 // shop.
 func (a *App) handleAutomationCreate(k *kit.Kit) error {
 	principal := auth.FromKit(k)
-	shopID := principal.User.ShopID
+	shopID := principal.ActiveShop.ShopID
 	ctx := k.Request.Context()
 
 	if err := k.Request.ParseForm(); err != nil {
@@ -383,7 +383,7 @@ func (a *App) handleAutomationCreate(k *kit.Kit) error {
 // automation's own shop.
 func (a *App) handleAutomationUpdate(k *kit.Kit) error {
 	principal := auth.FromKit(k)
-	shopID := principal.User.ShopID
+	shopID := principal.ActiveShop.ShopID
 	ctx := k.Request.Context()
 
 	id, err := uuid.Parse(chi.URLParam(k.Request, "id"))
@@ -448,7 +448,7 @@ func (a *App) handleAutomationUpdate(k *kit.Kit) error {
 // handleAutomationToggle enables or disables an automation.
 func (a *App) handleAutomationToggle(k *kit.Kit) error {
 	principal := auth.FromKit(k)
-	shopID := principal.User.ShopID
+	shopID := principal.ActiveShop.ShopID
 	ctx := k.Request.Context()
 
 	id, err := uuid.Parse(chi.URLParam(k.Request, "id"))
@@ -494,7 +494,7 @@ func (a *App) handleAutomationTest(k *kit.Kit) error {
 	}
 
 	principal := auth.FromKit(k)
-	outcome, err := runAutomationTest(k.Request.Context(), principal.User, id,
+	outcome, err := runAutomationTest(k.Request.Context(), principal, id,
 		k.Request.FormValue("phone"), a.testSendDeps())
 	if err != nil {
 		a.Log.Error("automation test send failed", "automation_id", id, "error", err)
@@ -546,7 +546,7 @@ func testVariables(t whatsapp.MerchantTemplate) map[string]string {
 // handleAutomationDelete removes an automation.
 func (a *App) handleAutomationDelete(k *kit.Kit) error {
 	principal := auth.FromKit(k)
-	shopID := principal.User.ShopID
+	shopID := principal.ActiveShop.ShopID
 	ctx := k.Request.Context()
 
 	id, err := uuid.Parse(chi.URLParam(k.Request, "id"))

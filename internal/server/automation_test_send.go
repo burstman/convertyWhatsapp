@@ -62,8 +62,8 @@ func (a *App) testSendDeps() testSendDeps {
 // the dedicated test-send budget before touching Meta) and the audit. It does
 // not authorize: the handler has already enforced owner access. A non-nil error
 // is an infrastructure failure, never a business refusal.
-func runAutomationTest(ctx context.Context, actor auth.User, automationID uuid.UUID, phone string, d testSendDeps) (testSendOutcome, error) {
-	automation, err := d.automation(ctx, actor.ShopID, automationID)
+func runAutomationTest(ctx context.Context, actor auth.Auth, automationID uuid.UUID, phone string, d testSendDeps) (testSendOutcome, error) {
+	automation, err := d.automation(ctx, actor.ActiveShop.ShopID, automationID)
 	if err != nil {
 		return testSendFailed, err
 	}
@@ -80,7 +80,7 @@ func runAutomationTest(ctx context.Context, actor auth.User, automationID uuid.U
 	// The template is looked up inside the actor's shop, so a template id
 	// belonging to another tenant resolves to nothing and is refused before
 	// any send.
-	template, err := d.template(ctx, actor.ShopID, automation.TemplateID)
+	template, err := d.template(ctx, actor.ActiveShop.ShopID, automation.TemplateID)
 	if err != nil {
 		return testSendFailed, err
 	}
@@ -89,11 +89,11 @@ func runAutomationTest(ctx context.Context, actor auth.User, automationID uuid.U
 	}
 
 	_, sendErr := d.send(ctx, whatsapp.TestTemplateRequest{
-		ShopID:       actor.ShopID,
+		ShopID:       actor.ActiveShop.ShopID,
 		TemplateID:   automation.TemplateID,
 		To:           phone,
 		Variables:    testVariables(template),
-		ActorID:      actor.ID,
+		ActorID:      actor.User.ID,
 		AutomationID: automationID,
 	})
 	switch {
@@ -123,20 +123,20 @@ func runAutomationTest(ctx context.Context, actor auth.User, automationID uuid.U
 
 // auditAttempt records one attempt. A failed audit write is logged, never
 // surfaced: the send result is authoritative and the audit must not block it.
-func (d testSendDeps) auditAttempt(ctx context.Context, actor auth.User, automationID, templateID uuid.UUID, phone, outcome string) {
+func (d testSendDeps) auditAttempt(ctx context.Context, actor auth.Auth, automationID, templateID uuid.UUID, phone, outcome string) {
 	if d.audit == nil {
 		return
 	}
 	entry := whatsapp.TestSendAudit{
-		ShopID:        actor.ShopID,
-		ActorID:       actor.ID,
+		ShopID:        actor.ActiveShop.ShopID,
+		ActorID:       actor.User.ID,
 		AutomationID:  automationID,
 		TemplateID:    templateID,
-		RecipientHash: d.hash(actor.ShopID, phone),
+		RecipientHash: d.hash(actor.ActiveShop.ShopID, phone),
 		Outcome:       outcome,
 		CreatedAt:     d.now(),
 	}
 	if err := d.audit(ctx, entry); err != nil && d.log != nil {
-		d.log.Warn("test send audit write failed", "shop_id", actor.ShopID, "outcome", outcome, "error", err)
+		d.log.Warn("test send audit write failed", "shop_id", actor.ActiveShop.ShopID, "outcome", outcome, "error", err)
 	}
 }

@@ -107,8 +107,6 @@ func (a *App) InitializeRoutes(r *chi.Mux) {
 		pr.Post("/login", kit.Handler(a.handleLoginPost))
 		pr.Get("/register", kit.Handler(a.handleRegisterGet))
 		pr.Post("/register", kit.Handler(a.handleRegisterPost))
-		pr.Get("/invite/{token}", kit.Handler(a.handleRedeemInviteGet))
-		pr.Post("/invite/{token}", kit.Handler(a.handleRedeemInvitePost))
 		pr.Post("/logout", kit.Handler(a.handleLogout))
 		pr.Post("/webhooks/converty", kit.Handler(a.handleConvertyWebhook))
 		pr.Get("/webhooks/meta", kit.Handler(a.handleMetaWebhookVerify))
@@ -146,9 +144,6 @@ func (a *App) InitializeRoutes(r *chi.Mux) {
 		pr.Post("/settings/phone", kit.Handler(a.handleWhatsappSettingsPhone))
 		pr.Post("/settings/disable", kit.Handler(a.handleWhatsappSettingsDisable))
 		pr.Get("/billing", kit.Handler(a.handleBilling))
-		pr.Get("/team", kit.Handler(a.handleTeamGet))
-		pr.Post("/team/invite", kit.Handler(a.handleTeamInvitePost))
-		pr.Post("/team/{id}/delete", kit.Handler(a.handleTeamDeletePost))
 		pr.Get("/whatsapp/onboard", kit.Handler(a.handleWhatsappOnboard))
 		pr.Post("/whatsapp/onboard", kit.Handler(a.handleWhatsappOnboardPost))
 

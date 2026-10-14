@@ -21,7 +21,6 @@ var loginSchema = validate.Schema{
 var registerSchema = validate.Schema{
 	// Keys are matched against Go struct fields by name, so they must be
 	// camelCase (the validate package normalises only the first character).
-	"shopName":        []validate.RuleSet{validate.Required.Message("give your shop a name")},
 	"name":            validate.Rules(validate.Required),
 	"email":           validate.Rules(validate.Email),
 	"password":        validate.Rules(validate.Required, validate.Min(8)),
@@ -84,8 +83,7 @@ func (a *App) handleRegisterPost(k *kit.Kit) error {
 		return k.Render(viewauth.RegisterForm(values, formErrs))
 	}
 
-	token, err := a.Auth.Register(k.Request.Context(), auth.RegisterInput{
-		ShopName: values.ShopName,
+	_, err := a.Auth.Register(k.Request.Context(), auth.RegisterInput{
 		UserName: values.Name,
 		Email:    strings.ToLower(strings.TrimSpace(values.Email)),
 		Password: values.Password,
@@ -97,14 +95,7 @@ func (a *App) handleRegisterPost(k *kit.Kit) error {
 		}
 		return err
 	}
-
-	sess := k.GetSession(auth.SessionCookieName)
-	sess.Values["sessionToken"] = token
-	applySessionOptions(sess, a.Cfg.IsProduction())
-	if err := sess.Save(k.Request, k.Response); err != nil {
-		return err
-	}
-	return k.Redirect(http.StatusSeeOther, "/dashboard")
+	return k.Render(viewauth.RegisterPending())
 }
 
 func (a *App) handleLogout(k *kit.Kit) error {

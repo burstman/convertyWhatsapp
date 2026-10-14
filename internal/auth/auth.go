@@ -6,39 +6,59 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// User roles. The shop's first user (created at registration) is the owner;
-// the row defaults to 'owner' so existing accounts need no backfill. Owners
-// administer the shop — today that means the WhatsApp settings and the
-// one-time enable/terms flow. Members get the day-to-day features only.
+// Roles for the new admin/client model.
 const (
-	RoleOwner  = "owner"
-	RoleMember = "member"
+	RoleAdmin  = "admin"
+	RoleClient = "client"
 )
 
-// User is a merchant account. Users belong to exactly one shop.
+// Account statuses for clients.
+const (
+	StatusActive    = "active"
+	StatusPending   = "pending"
+	StatusSuspended = "suspended"
+)
+
+// User represents an authenticated account.
 type User struct {
 	ID       uuid.UUID `json:"id"`
-	ShopID   uuid.UUID `json:"shop_id"`
 	Email    string    `json:"email"`
 	Name     string    `json:"name"`
 	Role     string    `json:"role"`
+	Status   string    `json:"status"`
 	Password string    `json:"-"`
 }
 
-// IsOwner reports whether the user administers the shop.
-func (u User) IsOwner() bool { return u.Role == RoleOwner }
+// ActiveShop is the shop currently selected by the client.
+type ActiveShop struct {
+	ShopID   uuid.UUID
+	ShopName string
+	Enabled  bool
+}
 
-// IsMember reports whether the user is a day-to-day (non-admin) member.
-func (u User) IsMember() bool { return u.Role == RoleMember }
+func (u User) IsAdmin() bool  { return u.Role == RoleAdmin }
+func (u User) IsClient() bool { return u.Role == RoleClient }
+func (u User) CanLogin() bool {
+	if u.Role == RoleAdmin {
+		return u.Status == "" || u.Status == StatusActive
+	}
+	return u.Status == StatusActive
+}
 
-// Auth is the authenticated principal for a request. It implements
-// superkit's kit.Auth interface and carries the shop context.
+// Auth is the authenticated principal for a request.
 type Auth struct {
-	LoggedIn bool
-	User     User
+	LoggedIn   bool
+	User       User
+	ActiveShop ActiveShop
 }
 
 func (a Auth) Check() bool { return a.LoggedIn }
+func (a Auth) IsAdmin() bool {
+	return a.LoggedIn && a.User.IsAdmin()
+}
+func (a Auth) IsClient() bool {
+	return a.LoggedIn && a.User.IsClient()
+}
 
 // FromKit returns the authenticated principal (or the zero value).
 func FromKit(k *kit.Kit) Auth {

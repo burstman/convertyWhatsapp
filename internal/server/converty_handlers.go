@@ -125,12 +125,12 @@ func truncateBytes(b []byte, n int) string {
 // connection for the shop with its management actions.
 func (a *App) handleIntegrations(k *kit.Kit) error {
 	principal := auth.FromKit(k)
-	shop, err := a.Shops.GetByID(k.Request.Context(), principal.User.ShopID)
+	shop, err := a.Shops.GetByID(k.Request.Context(), principal.ActiveShop.ShopID)
 	if err != nil {
 		return err
 	}
 
-	integrations, err := a.Converty.Integrations(k.Request.Context(), principal.User.ShopID)
+	integrations, err := a.Converty.Integrations(k.Request.Context(), principal.ActiveShop.ShopID)
 	if err != nil {
 		return err
 	}
@@ -171,7 +171,7 @@ func (a *App) handleIntegrations(k *kit.Kit) error {
 		Active:   "integrations",
 		ShopName: shop.Name,
 		UserName: principal.User.Name,
-		IsOwner:  principal.User.IsOwner(),
+		IsOwner:  principal.IsAdmin(),
 	}
 	return k.Render(vdashboard.IntegrationsPage(page, integrations, a.Converty.Configured(), flash))
 }
@@ -195,7 +195,7 @@ func (a *App) handleConvertyConnect(k *kit.Kit) error {
 		return err
 	}
 
-	a.Log.Info("converty connect started", "shop_id", principal.User.ShopID, "redirect", a.Cfg.ConvertyRedirectURI)
+	a.Log.Info("converty connect started", "shop_id", principal.ActiveShop.ShopID, "redirect", a.Cfg.ConvertyRedirectURI)
 	return k.Redirect(http.StatusFound, a.Converty.AuthorizeURL(state))
 }
 
@@ -233,24 +233,24 @@ func (a *App) handleConvertyCallback(k *kit.Kit) error {
 		// A failed store sync should not discard the freshly connected tokens:
 		// persist them and subscribe webhooks, but flag the sync problem.
 		a.Log.Error("converty stores/me failed", "error", err)
-		integrationID, sErr := a.Converty.SaveIntegration(ctx, principal.User.ShopID, converty.Store{}, converty.DefaultScopes, tok, time.Now())
+		integrationID, sErr := a.Converty.SaveIntegration(ctx, principal.ActiveShop.ShopID, converty.Store{}, converty.DefaultScopes, tok, time.Now())
 		if sErr != nil {
 			a.Log.Error("converty integration save failed", "error", sErr)
 			return k.Redirect(http.StatusSeeOther, "/integrations?flash=error")
 		}
-		a.subscribeWebhooks(ctx, principal.User.ShopID, integrationID)
+		a.subscribeWebhooks(ctx, principal.ActiveShop.ShopID, integrationID)
 		return k.Redirect(http.StatusSeeOther, "/integrations?flash=connected")
 	}
 
-	integrationID, err := a.Converty.SaveIntegration(ctx, principal.User.ShopID, store, converty.DefaultScopes, tok, time.Now())
+	integrationID, err := a.Converty.SaveIntegration(ctx, principal.ActiveShop.ShopID, store, converty.DefaultScopes, tok, time.Now())
 	if err != nil {
 		a.Log.Error("converty integration save failed", "error", err)
 		return k.Redirect(http.StatusSeeOther, "/integrations?flash=error")
 	}
 
-	a.subscribeWebhooks(ctx, principal.User.ShopID, integrationID)
+	a.subscribeWebhooks(ctx, principal.ActiveShop.ShopID, integrationID)
 
-	a.Log.Info("converty connected", "shop_id", principal.User.ShopID, "store", store.Name, "integration_id", integrationID)
+	a.Log.Info("converty connected", "shop_id", principal.ActiveShop.ShopID, "store", store.Name, "integration_id", integrationID)
 	return k.Redirect(http.StatusSeeOther, "/integrations?flash=connected")
 }
 
@@ -322,15 +322,15 @@ func (a *App) handleIntegrationRefresh(k *kit.Kit) error {
 	ctx, cancel := context.WithTimeout(k.Request.Context(), 20*time.Second)
 	defer cancel()
 
-	if err := a.Converty.RefreshIntegrationToken(ctx, principal.User.ShopID, id); err != nil {
-		a.Log.Error("converty token refresh failed", "shop_id", principal.User.ShopID, "integration_id", id, "error", err)
+	if err := a.Converty.RefreshIntegrationToken(ctx, principal.ActiveShop.ShopID, id); err != nil {
+		a.Log.Error("converty token refresh failed", "shop_id", principal.ActiveShop.ShopID, "integration_id", id, "error", err)
 		if errors.Is(err, converty.ErrNotFound) {
 			return k.Redirect(http.StatusSeeOther, "/integrations?flash=notfound")
 		}
 		return k.Redirect(http.StatusSeeOther, "/integrations?flash=error")
 	}
 
-	a.Log.Info("converty token refreshed", "shop_id", principal.User.ShopID, "integration_id", id)
+	a.Log.Info("converty token refreshed", "shop_id", principal.ActiveShop.ShopID, "integration_id", id)
 	return k.Redirect(http.StatusSeeOther, "/integrations?flash=refreshed")
 }
 
@@ -346,15 +346,15 @@ func (a *App) handleIntegrationTest(k *kit.Kit) error {
 	ctx, cancel := context.WithTimeout(k.Request.Context(), 20*time.Second)
 	defer cancel()
 
-	if err := a.Converty.TestConnection(ctx, principal.User.ShopID, id); err != nil {
-		a.Log.Warn("converty connection test failed", "shop_id", principal.User.ShopID, "integration_id", id, "error", err)
+	if err := a.Converty.TestConnection(ctx, principal.ActiveShop.ShopID, id); err != nil {
+		a.Log.Warn("converty connection test failed", "shop_id", principal.ActiveShop.ShopID, "integration_id", id, "error", err)
 		if errors.Is(err, converty.ErrNotFound) {
 			return k.Redirect(http.StatusSeeOther, "/integrations?flash=notfound")
 		}
 		return k.Redirect(http.StatusSeeOther, "/integrations?flash=testfailed")
 	}
 
-	a.Log.Info("converty connection test passed", "shop_id", principal.User.ShopID, "integration_id", id)
+	a.Log.Info("converty connection test passed", "shop_id", principal.ActiveShop.ShopID, "integration_id", id)
 	return k.Redirect(http.StatusSeeOther, "/integrations?flash=tested")
 }
 
@@ -372,8 +372,8 @@ func (a *App) handleIntegrationUpdate(k *kit.Kit) error {
 	}
 	domain := k.Request.FormValue("store_domain")
 
-	if err := a.Converty.UpdateIntegrationInfo(k.Request.Context(), principal.User.ShopID, id, name, domain); err != nil {
-		a.Log.Error("converty integration update failed", "shop_id", principal.User.ShopID, "integration_id", id, "error", err)
+	if err := a.Converty.UpdateIntegrationInfo(k.Request.Context(), principal.ActiveShop.ShopID, id, name, domain); err != nil {
+		a.Log.Error("converty integration update failed", "shop_id", principal.ActiveShop.ShopID, "integration_id", id, "error", err)
 		if errors.Is(err, converty.ErrNotFound) {
 			return k.Redirect(http.StatusSeeOther, "/integrations?flash=notfound")
 		}
@@ -393,8 +393,8 @@ func (a *App) handleIntegrationActivate(k *kit.Kit) error {
 	}
 
 	active := k.Request.FormValue("active") == "1"
-	if err := a.Converty.SetIntegrationActive(k.Request.Context(), principal.User.ShopID, id, active); err != nil {
-		a.Log.Error("converty integration activation failed", "shop_id", principal.User.ShopID, "integration_id", id, "error", err)
+	if err := a.Converty.SetIntegrationActive(k.Request.Context(), principal.ActiveShop.ShopID, id, active); err != nil {
+		a.Log.Error("converty integration activation failed", "shop_id", principal.ActiveShop.ShopID, "integration_id", id, "error", err)
 		if errors.Is(err, converty.ErrNotFound) {
 			return k.Redirect(http.StatusSeeOther, "/integrations?flash=notfound")
 		}
@@ -421,7 +421,7 @@ func (a *App) handleIntegrationDeletePreview(k *kit.Kit) error {
 
 	ctx := k.Request.Context()
 
-	integ, err := a.Converty.IntegrationByID(ctx, principal.User.ShopID, id)
+	integ, err := a.Converty.IntegrationByID(ctx, principal.ActiveShop.ShopID, id)
 	if err != nil {
 		if errors.Is(err, converty.ErrNotFound) {
 			return k.Redirect(http.StatusSeeOther, "/integrations?flash=notfound")
@@ -429,12 +429,12 @@ func (a *App) handleIntegrationDeletePreview(k *kit.Kit) error {
 		return err
 	}
 
-	affected, err := a.Automations.ConvertyAutomations(ctx, principal.User.ShopID)
+	affected, err := a.Automations.ConvertyAutomations(ctx, principal.ActiveShop.ShopID)
 	if err != nil {
 		return err
 	}
 
-	shop, err := a.Shops.GetByID(ctx, principal.User.ShopID)
+	shop, err := a.Shops.GetByID(ctx, principal.ActiveShop.ShopID)
 	if err != nil && err != shops.ErrNotFound {
 		return err
 	}
@@ -444,7 +444,7 @@ func (a *App) handleIntegrationDeletePreview(k *kit.Kit) error {
 		Active:   "integrations",
 		ShopName: shop.Name,
 		UserName: principal.User.Name,
-		IsOwner:  principal.User.IsOwner(),
+		IsOwner:  principal.IsAdmin(),
 	}
 	return k.Render(vdashboard.IntegrationDeletePage(page, integ, affected))
 }
@@ -466,7 +466,7 @@ func (a *App) handleIntegrationDelete(k *kit.Kit) error {
 	ctx, cancel := context.WithTimeout(k.Request.Context(), 20*time.Second)
 	defer cancel()
 
-	integ, err := a.Converty.IntegrationByID(ctx, principal.User.ShopID, id)
+	integ, err := a.Converty.IntegrationByID(ctx, principal.ActiveShop.ShopID, id)
 	if err != nil {
 		if errors.Is(err, converty.ErrNotFound) {
 			return k.Redirect(http.StatusSeeOther, "/integrations?flash=notfound")
@@ -474,7 +474,7 @@ func (a *App) handleIntegrationDelete(k *kit.Kit) error {
 		return err
 	}
 
-	err = a.Converty.WithAccessToken(ctx, principal.User.ShopID, id, func(ctx context.Context, accessToken string) error {
+	err = a.Converty.WithAccessToken(ctx, principal.ActiveShop.ShopID, id, func(ctx context.Context, accessToken string) error {
 		for event, hookID := range integ.WebhookSubscriptions {
 			if hookID == "" {
 				continue
@@ -485,16 +485,16 @@ func (a *App) handleIntegrationDelete(k *kit.Kit) error {
 					(apiErr.StatusCode == http.StatusNotFound || apiErr.StatusCode == http.StatusConflict)
 				if !alreadyGone {
 					a.Log.Warn("converty hook unsubscribe failed",
-						"shop_id", principal.User.ShopID, "integration_id", id, "event", event, "hook_id", hookID, "error", uErr)
+						"shop_id", principal.ActiveShop.ShopID, "integration_id", id, "event", event, "hook_id", hookID, "error", uErr)
 				}
 				continue
 			}
-			a.Log.Info("converty hook unsubscribed", "shop_id", principal.User.ShopID, "integration_id", id, "event", event, "hook_id", hookID)
+			a.Log.Info("converty hook unsubscribed", "shop_id", principal.ActiveShop.ShopID, "integration_id", id, "event", event, "hook_id", hookID)
 		}
 		return nil
 	})
 	if err != nil {
-		a.Log.Warn("converty delete: hook cleanup skipped, no access token", "shop_id", principal.User.ShopID, "error", err)
+		a.Log.Warn("converty delete: hook cleanup skipped, no access token", "shop_id", principal.ActiveShop.ShopID, "error", err)
 	}
 
 	tx, err := a.Pool.Begin(ctx)
@@ -504,19 +504,19 @@ func (a *App) handleIntegrationDelete(k *kit.Kit) error {
 	}
 	defer tx.Rollback(ctx)
 
-	removed, err := a.Automations.DeleteConvertyAutomations(ctx, tx, principal.User.ShopID)
+	removed, err := a.Automations.DeleteConvertyAutomations(ctx, tx, principal.ActiveShop.ShopID)
 	if err != nil {
 		a.Log.Error("converty delete: automation cascade failed",
-			"shop_id", principal.User.ShopID, "integration_id", id, "error", err)
+			"shop_id", principal.ActiveShop.ShopID, "integration_id", id, "error", err)
 		return err
 	}
 
 	if _, err := tx.Exec(ctx, `
 		DELETE FROM converty_integrations
 		WHERE id = $1 AND shop_id = $2`,
-		id, principal.User.ShopID,
+		id, principal.ActiveShop.ShopID,
 	); err != nil {
-		a.Log.Error("converty integration delete failed", "shop_id", principal.User.ShopID, "integration_id", id, "error", err)
+		a.Log.Error("converty integration delete failed", "shop_id", principal.ActiveShop.ShopID, "integration_id", id, "error", err)
 		return err
 	}
 
@@ -526,7 +526,7 @@ func (a *App) handleIntegrationDelete(k *kit.Kit) error {
 	}
 
 	a.Log.Info("converty integration deleted",
-		"shop_id", principal.User.ShopID, "integration_id", id, "automations_removed", removed)
+		"shop_id", principal.ActiveShop.ShopID, "integration_id", id, "automations_removed", removed)
 	return k.Redirect(http.StatusSeeOther, fmt.Sprintf("/integrations?flash=deleted&removed=%d", removed))
 }
 

@@ -72,7 +72,7 @@ func (a *App) handleTemplateCreate(k *kit.Kit) error {
 		return err
 	}
 
-	tmpl, err := a.WhatsApp.CreateTemplate(k.Request.Context(), principal.User.ShopID, whatsapp.TemplateDraft{
+	tmpl, err := a.WhatsApp.CreateTemplate(k.Request.Context(), principal.ActiveShop.ShopID, whatsapp.TemplateDraft{
 		Name:       name,
 		Language:   language,
 		Category:   "UTILITY",
@@ -94,10 +94,10 @@ func (a *App) handleTemplateCreate(k *kit.Kit) error {
 	}
 	if tmpl.MarketingFlagged {
 		a.Log.Warn("template flagged as marketing by meta",
-			"shop_id", principal.User.ShopID, "name", tmpl.Name, "warning", tmpl.MetaWarnings)
+			"shop_id", principal.ActiveShop.ShopID, "name", tmpl.Name, "warning", tmpl.MetaWarnings)
 		return k.Redirect(http.StatusSeeOther, "/templates?flash=marketing")
 	}
 	a.Log.Info("template submitted for review",
-		"shop_id", principal.User.ShopID, "name", tmpl.Name, "language", tmpl.Language)
+		"shop_id", principal.ActiveShop.ShopID, "name", tmpl.Name, "language", tmpl.Language)
 	return k.Redirect(http.StatusSeeOther, "/templates?flash=created")
 }

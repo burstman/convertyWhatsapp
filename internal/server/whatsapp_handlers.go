@@ -20,7 +20,7 @@ import (
 // failure instead of swallowing it. Rendering a response is not, on its own,
 // enough to stop handler execution — hence the explicit bool.
 func (a *App) requireOwner(k *kit.Kit) (bool, error) {
-	if auth.FromKit(k).User.IsOwner() {
+	if auth.FromKit(k).IsAdmin() {
 		return true, nil
 	}
 	if err := a.handleNotFound(k); err != nil {
@@ -36,7 +36,7 @@ func (a *App) requireOwner(k *kit.Kit) (bool, error) {
 // merchant has nothing to tune.
 func (a *App) handleWhatsappStatus(k *kit.Kit) error {
 	principal := auth.FromKit(k)
-	shop, err := a.Shops.GetByID(k.Request.Context(), principal.User.ShopID)
+	shop, err := a.Shops.GetByID(k.Request.Context(), principal.ActiveShop.ShopID)
 	if err != nil && err != shops.ErrNotFound {
 		return err
 	}
@@ -46,7 +46,7 @@ func (a *App) handleWhatsappStatus(k *kit.Kit) error {
 		Active:   "whatsapp",
 		ShopName: shop.Name,
 		UserName: principal.User.Name,
-		IsOwner:  principal.User.IsOwner(),
+		IsOwner:  principal.IsAdmin(),
 	}
 	return k.Render(vsettings.StatusCard(page, shop, a.Cfg.MetaPhoneNumber, a.Cfg.MetaVerifiedName))
 }
@@ -66,7 +66,7 @@ func (a *App) handleWhatsappSettings(k *kit.Kit) error {
 	}
 
 	principal := auth.FromKit(k)
-	shop, err := a.Shops.GetByID(k.Request.Context(), principal.User.ShopID)
+	shop, err := a.Shops.GetByID(k.Request.Context(), principal.ActiveShop.ShopID)
 	if err != nil && err != shops.ErrNotFound {
 		return err
 	}
@@ -96,16 +96,16 @@ func (a *App) handleWhatsappSettingsPhone(k *kit.Kit) error {
 	principal := auth.FromKit(k)
 	phone := k.Request.FormValue("shop_phone")
 	if !whatsapp.ValidPhone(phone) {
-		a.Log.Warn("whatsapp settings: invalid phone", "shop_id", principal.User.ShopID)
+		a.Log.Warn("whatsapp settings: invalid phone", "shop_id", principal.ActiveShop.ShopID)
 		return k.Redirect(http.StatusSeeOther, "/settings?flash=invalid_phone")
 	}
 
-	if err := a.Shops.UpdatePhone(k.Request.Context(), principal.User.ShopID, phone); err != nil {
-		a.Log.Error("whatsapp settings phone update failed", "shop_id", principal.User.ShopID, "error", err)
+	if err := a.Shops.UpdatePhone(k.Request.Context(), principal.ActiveShop.ShopID, phone); err != nil {
+		a.Log.Error("whatsapp settings phone update failed", "shop_id", principal.ActiveShop.ShopID, "error", err)
 		return k.Redirect(http.StatusSeeOther, "/settings?flash=error")
 	}
 
-	a.Log.Info("whatsapp settings phone updated", "shop_id", principal.User.ShopID)
+	a.Log.Info("whatsapp settings phone updated", "shop_id", principal.ActiveShop.ShopID)
 	return k.Redirect(http.StatusSeeOther, "/settings?flash=phone_saved")
 }
 
@@ -121,11 +121,11 @@ func (a *App) handleWhatsappSettingsDisable(k *kit.Kit) error {
 	}
 
 	principal := auth.FromKit(k)
-	if err := a.Shops.DisableWhatsApp(k.Request.Context(), principal.User.ShopID); err != nil {
-		a.Log.Error("whatsapp settings disable failed", "shop_id", principal.User.ShopID, "error", err)
+	if err := a.Shops.DisableWhatsApp(k.Request.Context(), principal.ActiveShop.ShopID); err != nil {
+		a.Log.Error("whatsapp settings disable failed", "shop_id", principal.ActiveShop.ShopID, "error", err)
 		return k.Redirect(http.StatusSeeOther, "/settings?flash=error")
 	}
-	a.Log.Info("whatsapp service disabled", "shop_id", principal.User.ShopID)
+	a.Log.Info("whatsapp service disabled", "shop_id", principal.ActiveShop.ShopID)
 	return k.Redirect(http.StatusSeeOther, "/settings?flash=disabled")
 }
 
@@ -143,14 +143,14 @@ func (a *App) handleBilling(k *kit.Kit) error {
 	principal := auth.FromKit(k)
 	ctx := k.Request.Context()
 
-	shop, err := a.Shops.GetByID(ctx, principal.User.ShopID)
+	shop, err := a.Shops.GetByID(ctx, principal.ActiveShop.ShopID)
 	if err != nil && err != shops.ErrNotFound {
 		return err
 	}
 
-	usage, err := a.WhatsApp.MessagesUsage(ctx, principal.User.ShopID)
+	usage, err := a.WhatsApp.MessagesUsage(ctx, principal.ActiveShop.ShopID)
 	if err != nil {
-		a.Log.Error("billing usage query failed", "shop_id", principal.User.ShopID, "error", err)
+		a.Log.Error("billing usage query failed", "shop_id", principal.ActiveShop.ShopID, "error", err)
 		return err
 	}
 
@@ -179,7 +179,7 @@ func (a *App) handleWhatsappOnboard(k *kit.Kit) error {
 
 	principal := auth.FromKit(k)
 
-	shop, err := a.Shops.GetByID(k.Request.Context(), principal.User.ShopID)
+	shop, err := a.Shops.GetByID(k.Request.Context(), principal.ActiveShop.ShopID)
 	if err != nil && err != shops.ErrNotFound {
 		return err
 	}
@@ -189,7 +189,7 @@ func (a *App) handleWhatsappOnboard(k *kit.Kit) error {
 		Active:   "settings",
 		ShopName: shop.Name,
 		UserName: principal.User.Name,
-		IsOwner:  principal.User.IsOwner(),
+		IsOwner:  principal.IsAdmin(),
 	}
 	return k.Render(vsettings.Onboarding(page, shop))
 }
@@ -213,11 +213,11 @@ func (a *App) handleWhatsappOnboardPost(k *kit.Kit) error {
 	}
 	phone := k.Request.FormValue("shop_phone")
 
-	if err := a.Shops.EnableWhatsApp(k.Request.Context(), principal.User.ShopID, phone); err != nil {
-		a.Log.Error("whatsapp onboard enable failed", "shop_id", principal.User.ShopID, "error", err)
+	if err := a.Shops.EnableWhatsApp(k.Request.Context(), principal.ActiveShop.ShopID, phone); err != nil {
+		a.Log.Error("whatsapp onboard enable failed", "shop_id", principal.ActiveShop.ShopID, "error", err)
 		return k.Redirect(http.StatusSeeOther, "/whatsapp/onboard?error=enable")
 	}
 
-	a.Log.Info("whatsapp service enabled", "shop_id", principal.User.ShopID, "phone", phone)
+	a.Log.Info("whatsapp service enabled", "shop_id", principal.ActiveShop.ShopID, "phone", phone)
 	return k.Redirect(http.StatusSeeOther, "/whatsapp?enabled=1")
 }

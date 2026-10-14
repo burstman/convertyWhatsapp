@@ -32,14 +32,20 @@ const (
 )
 
 type Service struct {
-	pool  *pgxpool.Pool
-	shops shops.Repository
-	now   func() time.Time
-	rand  func([]byte) (int, error)
+	pool    *pgxpool.Pool
+	shops   shops.Repository
+	now     func() time.Time
+	rand    func([]byte) (int, error)
+	admin   adminConfig
+	started time.Time
+}
+
+type adminConfig struct {
+	email    string
+	password string
 }
 
 type RegisterInput struct {
-	ShopName string
 	UserName string
 	Email    string
 	Password string
@@ -53,43 +59,26 @@ func NewService(pool *pgxpool.Pool, shops shops.Repository) *Service {
 	}
 }
 
-// Register creates a shop, its owner as the first user, and a session in a
-// single transaction. It returns the session token that must be stored in the
-// session cookie.
+// Register creates a pending client account. The account must be approved by an
+// admin before it can log in.
 func (s *Service) Register(ctx context.Context, in RegisterInput) (string, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(in.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return "", fmt.Errorf("hash password: %w", err)
 	}
 
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return "", fmt.Errorf("begin tx: %w", err)
-	}
-	defer tx.Rollback(ctx)
-
-	shop, err := s.shops.Create(ctx, tx, in.ShopName)
-	if err != nil {
-		return "", fmt.Errorf("create shop: %w", err)
-	}
-
-	userID, err := insertUser(ctx, tx, shop.ID, in.Email, string(hash), in.UserName)
+	_, err = s.pool.Exec(ctx, `
+		INSERT INTO users (email, password_hash, name, role, status)
+		VALUES (lower($1), $2, $3, 'client', 'pending')`,
+		in.Email, string(hash), in.UserName,
+	)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return "", ErrEmailTaken
 		}
 		return "", fmt.Errorf("insert user: %w", err)
 	}
-
-	token, err := s.createSession(ctx, tx, userID)
-	if err != nil {
-		return "", fmt.Errorf("create session: %w", err)
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return "", fmt.Errorf("commit tx: %w", err)
-	}
-	return token, nil
+	return "", nil
 }
 
 // Login verifies credentials and returns a session token for the user.
@@ -99,15 +88,19 @@ func (s *Service) Login(ctx context.Context, email, password string) (string, er
 		passwordHash string
 	)
 	if err := s.pool.QueryRow(ctx, `
-		SELECT id, shop_id, email, name, role, password_hash
+		SELECT id, email, name, role, status, password_hash
 		FROM users
 		WHERE email = lower($1)`,
 		email,
-	).Scan(&user.ID, &user.ShopID, &user.Email, &user.Name, &user.Role, &passwordHash); err != nil {
+	).Scan(&user.ID, &user.Email, &user.Name, &user.Role, &user.Status, &passwordHash); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", ErrInvalidCredentials
 		}
 		return "", fmt.Errorf("query user: %w", err)
+	}
+
+	if !user.CanLogin() {
+		return "", ErrInvalidCredentials
 	}
 
 	if bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(password)) != nil {
@@ -224,27 +217,10 @@ func (s *Service) UsersByShop(ctx context.Context, shopID uuid.UUID) ([]TeamMemb
 		if err := rows.Scan(&m.ID, &m.Email, &m.Name, &m.Role, &hash); err != nil {
 			return nil, err
 		}
-		m.Pending = m.Role == RoleMember && hash == ""
-		out = append(out, m)
+	m.Pending = hash == ""
+	out = append(out, m)
 	}
-	return out, rows.Err()
-}
-
-// DeleteMember removes a member account from a shop. Owners can never be
-// removed this way — a shop always keeps its admin.
-func (s *Service) DeleteMember(ctx context.Context, shopID, userID uuid.UUID) error {
-	tag, err := s.pool.Exec(ctx, `
-		DELETE FROM users
-		WHERE id = $1 AND shop_id = $2 AND role = 'member'`,
-		userID, shopID,
-	)
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotMember
-	}
-	return nil
+return out, rows.Err()
 }
 
 // ErrNotMember reports that no member with that id exists for the shop.

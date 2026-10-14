@@ -28,7 +28,11 @@ func (a *App) handleAPICreateCustomer(k *kit.Kit) error {
 		return a.writeAPIError(k, http.StatusBadRequest, whatsapp.NewSendRejection(whatsapp.ErrCodeTemplateVariableInvalid, "phone is required"))
 	}
 
-	id, err := a.WhatsApp.UpsertCustomer(k.Request.Context(), principal.User.ShopID, in.Name, in.Phone)
+	id, err := a.WhatsApp.UpsertCustomer(k.Request.Context(), principal.ActiveShop.ShopID, in.Name, in.Phone)
+	if err != nil {
+		a.writeAPIError(k, http.StatusInternalServerError, err)
+		return nil
+	}
 	if err != nil {
 		a.writeAPIError(k, http.StatusInternalServerError, err)
 		return nil
@@ -39,7 +43,7 @@ func (a *App) handleAPICreateCustomer(k *kit.Kit) error {
 // GET /api/whatsapp/customers — list the merchant's customers.
 func (a *App) handleAPICustomers(k *kit.Kit) error {
 	principal := auth.FromKit(k)
-	customers, err := a.WhatsApp.Customers(k.Request.Context(), principal.User.ShopID)
+	customers, err := a.WhatsApp.Customers(k.Request.Context(), principal.ActiveShop.ShopID)
 	if err != nil {
 		a.writeAPIError(k, http.StatusInternalServerError, err)
 		return nil
@@ -65,7 +69,7 @@ func (a *App) handleAPIGrantConsent(k *kit.Kit) error {
 		return a.writeAPIError(k, http.StatusBadRequest, whatsapp.NewSendRejection(whatsapp.ErrCodeCustomerNotOwned, "customer_id is required"))
 	}
 
-	if err := a.WhatsApp.GrantConsent(k.Request.Context(), principal.User.ShopID, cid, in.Category, in.Source, in.Evidence); err != nil {
+	if err := a.WhatsApp.GrantConsent(k.Request.Context(), principal.ActiveShop.ShopID, cid, in.Category, in.Source, in.Evidence); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return a.writeAPIError(k, http.StatusUnprocessableEntity, whatsapp.NewSendRejection(whatsapp.ErrCodeCustomerNotOwned, "customer not found for this merchant"))
 		}
@@ -90,7 +94,7 @@ func (a *App) handleAPIRevokeConsent(k *kit.Kit) error {
 		return a.writeAPIError(k, http.StatusBadRequest, whatsapp.NewSendRejection(whatsapp.ErrCodeCustomerNotOwned, "customer_id is required"))
 	}
 
-	if err := a.WhatsApp.RevokeConsent(k.Request.Context(), principal.User.ShopID, cid); err != nil {
+	if err := a.WhatsApp.RevokeConsent(k.Request.Context(), principal.ActiveShop.ShopID, cid); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return a.writeAPIError(k, http.StatusUnprocessableEntity, whatsapp.NewSendRejection(whatsapp.ErrCodeCustomerNotOwned, "customer not found for this merchant"))
 		}
@@ -118,7 +122,7 @@ func (a *App) handleAPICreateTemplate(k *kit.Kit) error {
 			whatsapp.NewSendRejection(whatsapp.ErrCodeTemplateVariableInvalid, "name, language, category and components are required"))
 	}
 
-	tmpl, err := a.WhatsApp.CreateTemplate(k.Request.Context(), principal.User.ShopID, whatsapp.TemplateDraft{
+	tmpl, err := a.WhatsApp.CreateTemplate(k.Request.Context(), principal.ActiveShop.ShopID, whatsapp.TemplateDraft{
 		Name:       in.Name,
 		Language:   in.Language,
 		Category:   in.Category,
@@ -140,7 +144,7 @@ func (a *App) handleAPICreateTemplate(k *kit.Kit) error {
 // GET /api/whatsapp/templates — list the merchant's templates.
 func (a *App) handleAPITemplates(k *kit.Kit) error {
 	principal := auth.FromKit(k)
-	templates, err := a.WhatsApp.Templates(k.Request.Context(), principal.User.ShopID)
+	templates, err := a.WhatsApp.Templates(k.Request.Context(), principal.ActiveShop.ShopID)
 	if err != nil {
 		a.writeAPIError(k, http.StatusInternalServerError, err)
 		return nil

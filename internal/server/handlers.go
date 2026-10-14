@@ -43,12 +43,12 @@ func (a *App) handlePrivacyPage(k *kit.Kit) error {
 
 func (a *App) handleOverview(k *kit.Kit) error {
 	principal := auth.FromKit(k)
-	shop, err := a.Shops.GetByID(k.Request.Context(), principal.User.ShopID)
+	shop, err := a.Shops.GetByID(k.Request.Context(), principal.ActiveShop.ShopID)
 	if err != nil && !errors.Is(err, shops.ErrNotFound) {
 		return err
 	}
 
-	stats, err := a.Dashboard.Stats(k.Request.Context(), principal.User.ShopID)
+	stats, err := a.Dashboard.Stats(k.Request.Context(), principal.ActiveShop.ShopID)
 	if err != nil {
 		return err
 	}
@@ -57,7 +57,7 @@ func (a *App) handleOverview(k *kit.Kit) error {
 		Title:    "Overview",
 		ShopName: shop.Name,
 		UserName: principal.User.Name,
-		IsOwner:  principal.User.IsOwner(),
+		IsOwner:  principal.IsAdmin(),
 	}
 
 	return k.Render(vdashboard.Overview(page, stats))
@@ -67,7 +67,7 @@ func (a *App) handleOverview(k *kit.Kit) error {
 // approval status.
 func (a *App) handleTemplates(k *kit.Kit) error {
 	principal := auth.FromKit(k)
-	shop, err := a.Shops.GetByID(k.Request.Context(), principal.User.ShopID)
+	shop, err := a.Shops.GetByID(k.Request.Context(), principal.ActiveShop.ShopID)
 	if err != nil && !errors.Is(err, shops.ErrNotFound) {
 		return err
 	}
@@ -80,7 +80,7 @@ func (a *App) handleTemplates(k *kit.Kit) error {
 		a.Log.Info("expired marketing templates deleted", "count", n)
 	}
 
-	templates, err := a.WhatsApp.Templates(k.Request.Context(), principal.User.ShopID)
+	templates, err := a.WhatsApp.Templates(k.Request.Context(), principal.ActiveShop.ShopID)
 	if err != nil {
 		return err
 	}
@@ -116,7 +116,7 @@ func (a *App) handleTemplates(k *kit.Kit) error {
 		Title:    "Templates",
 		ShopName: shop.Name,
 		UserName: principal.User.Name,
-		IsOwner:  principal.User.IsOwner(),
+		IsOwner:  principal.IsAdmin(),
 	}
 	return k.Render(vdashboard.TemplatesPage(page, templates, flash))
 }
@@ -125,7 +125,7 @@ func (a *App) handleTemplates(k *kit.Kit) error {
 func (a *App) handlePlaceholder(section string) func(*kit.Kit) error {
 	return func(k *kit.Kit) error {
 		principal := auth.FromKit(k)
-		shop, err := a.Shops.GetByID(k.Request.Context(), principal.User.ShopID)
+		shop, err := a.Shops.GetByID(k.Request.Context(), principal.ActiveShop.ShopID)
 		if err != nil && !errors.Is(err, shops.ErrNotFound) {
 			return err
 		}
@@ -133,7 +133,7 @@ func (a *App) handlePlaceholder(section string) func(*kit.Kit) error {
 			Title:    sectionTitle(section),
 			ShopName: shop.Name,
 			UserName: principal.User.Name,
-			IsOwner:  principal.User.IsOwner(),
+			IsOwner:  principal.IsAdmin(),
 		}
 		return k.Render(vdashboard.Placeholder(page, section))
 	}
