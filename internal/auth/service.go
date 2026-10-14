@@ -274,3 +274,26 @@ func isUniqueViolation(err error) bool {
 	}
 	return false
 }
+
+func (s *Service) EnsureAdmin(ctx context.Context, email, password string) error {
+	if email == "" || password == "" {
+		return nil
+	}
+	var id uuid.UUID
+	err := s.pool.QueryRow(ctx, `SELECT id FROM users WHERE role='admin' AND email=lower($1)`, email).Scan(&id)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("query admin: %w", err)
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("hash password: %w", err)
+	}
+	_, err = s.pool.Exec(ctx, `INSERT INTO users (email,password_hash,name,role,status) VALUES (lower($1),$2,'Admin','admin','active')`, email, string(hash))
+	if err != nil && !isUniqueViolation(err) {
+		return fmt.Errorf("insert admin: %w", err)
+	}
+	return nil
+}
