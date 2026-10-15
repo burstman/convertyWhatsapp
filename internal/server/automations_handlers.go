@@ -88,7 +88,8 @@ func (a *App) handleAutomations(k *kit.Kit) error {
 		Active:   "automations",
 		ShopName: shop.Name,
 		UserName: principal.User.Name,
-		IsOwner:  principal.IsAdmin(),
+		IsOwner:  principal.IsClient(),
+		IsAdmin:  principal.IsAdmin(),
 	}
 	return k.Render(vdashboard.AutomationsPage(page, list, approved, names, bodies, flash))
 }
@@ -148,7 +149,8 @@ func (a *App) handleAutomationHistory(k *kit.Kit) error {
 		Active:   "automations",
 		ShopName: shop.Name,
 		UserName: principal.User.Name,
-		IsOwner:  principal.IsAdmin(),
+		IsOwner:  principal.IsClient(),
+		IsAdmin:  principal.IsAdmin(),
 	}
 	retry := retryOutcome(k)
 	return k.Render(vdashboard.AutomationHistoryPage(page, *automation, templateName, rows, counts, suppressions, retry))
@@ -261,7 +263,8 @@ func (a *App) handleAutomationEdit(k *kit.Kit) error {
 		Active:   "automations",
 		ShopName: shop.Name,
 		UserName: principal.User.Name,
-		IsOwner:  principal.IsAdmin(),
+		IsOwner:  principal.IsClient(),
+		IsAdmin:  principal.IsAdmin(),
 	}
 	source, sourceCounts := defaultEventSource(automation)
 	return k.Render(vdashboard.AutomationFormPage(page, automation, fitSource(approved, source),

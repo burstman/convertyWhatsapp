@@ -20,7 +20,7 @@ import (
 // failure instead of swallowing it. Rendering a response is not, on its own,
 // enough to stop handler execution — hence the explicit bool.
 func (a *App) requireOwner(k *kit.Kit) (bool, error) {
-	if auth.FromKit(k).IsAdmin() {
+	if auth.FromKit(k).IsClient() {
 		return true, nil
 	}
 	if err := a.handleNotFound(k); err != nil {
@@ -46,7 +46,8 @@ func (a *App) handleWhatsappStatus(k *kit.Kit) error {
 		Active:   "whatsapp",
 		ShopName: shop.Name,
 		UserName: principal.User.Name,
-		IsOwner:  principal.IsAdmin(),
+		IsOwner:  principal.IsClient(),
+		IsAdmin:  principal.IsAdmin(),
 	}
 	return k.Render(vsettings.StatusCard(page, shop, a.Cfg.MetaPhoneNumber, a.Cfg.MetaVerifiedName))
 }
@@ -189,7 +190,8 @@ func (a *App) handleWhatsappOnboard(k *kit.Kit) error {
 		Active:   "settings",
 		ShopName: shop.Name,
 		UserName: principal.User.Name,
-		IsOwner:  principal.IsAdmin(),
+		IsOwner:  principal.IsClient(),
+		IsAdmin:  principal.IsAdmin(),
 	}
 	return k.Render(vsettings.Onboarding(page, shop))
 }

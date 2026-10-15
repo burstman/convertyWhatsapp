@@ -34,8 +34,8 @@ type MerchantTemplate struct {
 	MarketingFlagged bool   // Meta warned this template is/will be treated as marketing
 	MetaWarnings     string // Meta's own warning text, verbatim, for client display
 	MetaTemplateID   string
-	Components       []byte // raw Meta components JSONB (also drives variable counting on send)
-	NumVariables     int    // placeholder count derived from Components
+	Components       []byte     // raw Meta components JSONB (also drives variable counting on send)
+	NumVariables     int        // placeholder count derived from Components
 	Variables        []TokenKey // semantic map in placeholder order (nil == legacy positional)
 	Source           string     // converty | delivery | any: the event source this message is written for
 	CreatedAt        time.Time

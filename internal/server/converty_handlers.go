@@ -171,7 +171,8 @@ func (a *App) handleIntegrations(k *kit.Kit) error {
 		Active:   "integrations",
 		ShopName: shop.Name,
 		UserName: principal.User.Name,
-		IsOwner:  principal.IsAdmin(),
+		IsOwner:  principal.IsClient(),
+		IsAdmin:  principal.IsAdmin(),
 	}
 	return k.Render(vdashboard.IntegrationsPage(page, integrations, a.Converty.Configured(), flash))
 }
@@ -444,7 +445,8 @@ func (a *App) handleIntegrationDeletePreview(k *kit.Kit) error {
 		Active:   "integrations",
 		ShopName: shop.Name,
 		UserName: principal.User.Name,
-		IsOwner:  principal.IsAdmin(),
+		IsOwner:  principal.IsClient(),
+		IsAdmin:  principal.IsAdmin(),
 	}
 	return k.Render(vdashboard.IntegrationDeletePage(page, integ, affected))
 }

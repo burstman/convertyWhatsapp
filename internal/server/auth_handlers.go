@@ -28,8 +28,8 @@ var registerSchema = validate.Schema{
 }
 
 func (a *App) handleLoginGet(k *kit.Kit) error {
-	if auth.FromKit(k).LoggedIn {
-		return k.Redirect(http.StatusSeeOther, "/dashboard")
+	if principal := auth.FromKit(k); principal.LoggedIn {
+		return k.Redirect(http.StatusSeeOther, homeFor(principal))
 	}
 	return k.Render(viewauth.LoginPage())
 }
@@ -66,8 +66,8 @@ func (a *App) handleLoginPost(k *kit.Kit) error {
 }
 
 func (a *App) handleRegisterGet(k *kit.Kit) error {
-	if auth.FromKit(k).LoggedIn {
-		return k.Redirect(http.StatusSeeOther, "/dashboard")
+	if principal := auth.FromKit(k); principal.LoggedIn {
+		return k.Redirect(http.StatusSeeOther, homeFor(principal))
 	}
 	return k.Render(viewauth.RegisterPage())
 }

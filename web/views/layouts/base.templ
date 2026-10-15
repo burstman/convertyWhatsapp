@@ -37,14 +37,18 @@ templ Shell(page components.Page) {
 						<span class="text-sm text-slate-400">WhatsApp</span>
 					</div>
 					<nav class="space-y-1 p-4">
-						@navLink(NavItem{"Overview", "/dashboard", "overview"}, page)
-						@navLink(NavItem{"Shop Integration", "/integrations", "integrations"}, page)
-						@navLink(NavItem{"Automations", "/automations", "automations"}, page)
-						@navLink(NavItem{"Templates", "/templates", "templates"}, page)
-						@navLink(NavItem{"WhatsApp", "/whatsapp", "whatsapp"}, page)
-						if page.IsOwner {
-							@navLink(NavItem{"Settings", "/settings", "settings"}, page)
-							@navLink(NavItem{"Billing", "/billing", "billing"}, page)
+						if page.IsAdmin {
+							@navLink(NavItem{"Clients", "/admin", "admin"}, page)
+						} else {
+							@navLink(NavItem{"Overview", "/dashboard", "overview"}, page)
+							@navLink(NavItem{"Shop Integration", "/integrations", "integrations"}, page)
+							@navLink(NavItem{"Automations", "/automations", "automations"}, page)
+							@navLink(NavItem{"Templates", "/templates", "templates"}, page)
+							@navLink(NavItem{"WhatsApp", "/whatsapp", "whatsapp"}, page)
+							if page.IsOwner {
+								@navLink(NavItem{"Settings", "/settings", "settings"}, page)
+								@navLink(NavItem{"Billing", "/billing", "billing"}, page)
+							}
 						}
 					</nav>
 				</aside>

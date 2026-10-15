@@ -27,9 +27,18 @@ func (a *App) handleReadiness(k *kit.Kit) error {
 	return k.Text(http.StatusOK, "ready")
 }
 
+// homeFor returns the landing page for an authenticated principal: the admin
+// console for platform operators, the shop dashboard for clients.
+func homeFor(principal auth.Auth) string {
+	if principal.IsAdmin() {
+		return "/admin"
+	}
+	return "/dashboard"
+}
+
 func (a *App) handleIndex(k *kit.Kit) error {
 	if authenticated := auth.FromKit(k); authenticated.LoggedIn {
-		return k.Redirect(http.StatusSeeOther, "/dashboard")
+		return k.Redirect(http.StatusSeeOther, homeFor(authenticated))
 	}
 	return k.Render(vlanding.Index())
 }
@@ -57,7 +66,8 @@ func (a *App) handleOverview(k *kit.Kit) error {
 		Title:    "Overview",
 		ShopName: shop.Name,
 		UserName: principal.User.Name,
-		IsOwner:  principal.IsAdmin(),
+		IsOwner:  principal.IsClient(),
+		IsAdmin:  principal.IsAdmin(),
 	}
 
 	return k.Render(vdashboard.Overview(page, stats))
@@ -116,7 +126,8 @@ func (a *App) handleTemplates(k *kit.Kit) error {
 		Title:    "Templates",
 		ShopName: shop.Name,
 		UserName: principal.User.Name,
-		IsOwner:  principal.IsAdmin(),
+		IsOwner:  principal.IsClient(),
+		IsAdmin:  principal.IsAdmin(),
 	}
 	return k.Render(vdashboard.TemplatesPage(page, templates, flash))
 }
@@ -133,7 +144,8 @@ func (a *App) handlePlaceholder(section string) func(*kit.Kit) error {
 			Title:    sectionTitle(section),
 			ShopName: shop.Name,
 			UserName: principal.User.Name,
-			IsOwner:  principal.IsAdmin(),
+			IsOwner:  principal.IsClient(),
+			IsAdmin:  principal.IsAdmin(),
 		}
 		return k.Render(vdashboard.Placeholder(page, section))
 	}

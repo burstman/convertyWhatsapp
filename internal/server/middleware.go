@@ -9,6 +9,10 @@ import (
 	"time"
 
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
+
+	"github.com/anthdm/superkit/kit"
+
+	"whatsappconverty/internal/auth"
 )
 
 const (
@@ -127,4 +131,17 @@ func newStatusRecorder(w http.ResponseWriter) *statusRecorder {
 func (r *statusRecorder) WriteHeader(status int) {
 	r.status = status
 	r.ResponseWriter.WriteHeader(status)
+}
+
+// clientOnlyMiddleware keeps platform admins out of the shop-scoped merchant
+// area: an admin (who has no active shop) is redirected to the admin console.
+// It runs after kit.WithAuthentication, so the principal is always present.
+func (a *App) clientOnlyMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if principal, ok := r.Context().Value(kit.AuthKey{}).(auth.Auth); ok && principal.IsAdmin() {
+			http.Redirect(w, r, "/admin", http.StatusSeeOther)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }

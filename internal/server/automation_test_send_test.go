@@ -69,8 +69,8 @@ func ownerUser(shopID uuid.UUID) auth.User {
 	return auth.User{ID: uuid.New(), Role: auth.RoleClient, Status: auth.StatusActive}
 }
 
-func memberUser(shopID uuid.UUID) auth.User {
-	return auth.User{ID: uuid.New(), Role: auth.RoleClient, Status: auth.StatusPending}
+func adminUser(shopID uuid.UUID) auth.User {
+	return auth.User{ID: uuid.New(), Role: auth.RoleAdmin, Status: auth.StatusActive}
 }
 
 func kitWithUser(user auth.User) (*kit.Kit, *httptest.ResponseRecorder) {
@@ -82,21 +82,21 @@ func kitWithUser(user auth.User) (*kit.Kit, *httptest.ResponseRecorder) {
 	return &kit.Kit{Response: rec, Request: r}, rec
 }
 
-// A member hitting the test endpoint gets the platform's not-found page and is
-// never sent down the send path. (The nil service pointers would panic if the
-// handler fell through, so this also proves the early return.)
-func TestMemberCannotTriggerTestSend(t *testing.T) {
+// A platform admin hitting the test endpoint gets the platform's not-found page
+// and is never sent down the send path. (The nil service pointers would panic if
+// the handler fell through.)
+func TestAdminCannotTriggerTestSend(t *testing.T) {
 	a := &App{Cfg: config.Config{SuperkitSecret: "test-superkit-secret-32-bytes-min"}, Log: discardLogger()}
-	k, rec := kitWithUser(memberUser(uuid.New()))
+	k, rec := kitWithUser(adminUser(uuid.New()))
 
 	if err := a.handleAutomationTest(k); err != nil {
-		t.Fatalf("member request returned an error: %v", err)
+		t.Fatalf("admin request returned an error: %v", err)
 	}
 	if loc := rec.Header().Get("Location"); loc != "" {
-		t.Fatalf("member was redirected (%q) instead of blocked", loc)
+		t.Fatalf("admin was redirected (%q) instead of blocked", loc)
 	}
 	if !strings.Contains(rec.Body.String(), "Page not found") {
-		t.Fatalf("member did not receive the not-found page: %q", rec.Body.String())
+		t.Fatalf("admin did not receive the not-found page: %q", rec.Body.String())
 	}
 }
 
@@ -108,7 +108,7 @@ func TestTestSendAutomationIsTenantScoped(t *testing.T) {
 	foreign := uuid.New()
 
 	f := &fakeTestSend{automation: nil} // not found within this shop
-	outcome, err := runAutomationTest(context.Background(), auth.Auth{LoggedIn:true, User: actor, ActiveShop: auth.ActiveShop{ShopID: shop}}, foreign, "+21624118849", f.deps())
+	outcome, err := runAutomationTest(context.Background(), auth.Auth{LoggedIn: true, User: actor, ActiveShop: auth.ActiveShop{ShopID: shop}}, foreign, "+21624118849", f.deps())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestTestSendTemplateIsTenantScoped(t *testing.T) {
 		automation: &automations.Automation{ID: autoID, TemplateID: tmplID},
 		template:   whatsapp.MerchantTemplate{}, // lookup miss => zero value
 	}
-	outcome, err := runAutomationTest(context.Background(), auth.Auth{LoggedIn:true, User: actor, ActiveShop: auth.ActiveShop{ShopID: shop}}, autoID, "+21624118849", f.deps())
+	outcome, err := runAutomationTest(context.Background(), auth.Auth{LoggedIn: true, User: actor, ActiveShop: auth.ActiveShop{ShopID: shop}}, autoID, "+21624118849", f.deps())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -161,7 +161,7 @@ func TestOwnerTestSendAcceptedAndAuditedWithoutPhone(t *testing.T) {
 		automation: &automations.Automation{ID: autoID, TemplateID: tmplID},
 		template:   whatsapp.MerchantTemplate{ID: tmplID},
 	}
-	outcome, err := runAutomationTest(context.Background(), auth.Auth{LoggedIn:true, User: actor, ActiveShop: auth.ActiveShop{ShopID: shop}}, autoID, phone, f.deps())
+	outcome, err := runAutomationTest(context.Background(), auth.Auth{LoggedIn: true, User: actor, ActiveShop: auth.ActiveShop{ShopID: shop}}, autoID, phone, f.deps())
 	if err != nil || outcome != testSendAccepted {
 		t.Fatalf("outcome = %v, err = %v, want accepted", outcome, err)
 	}
@@ -206,7 +206,7 @@ func TestRateLimitedTestSendIsAuditedAndNotAccepted(t *testing.T) {
 		template:   whatsapp.MerchantTemplate{ID: tmplID},
 		sendErr:    &whatsapp.RateLimitExceeded{PerShop: true, TestSend: true},
 	}
-	outcome, err := runAutomationTest(context.Background(), auth.Auth{LoggedIn:true, User: actor, ActiveShop: auth.ActiveShop{ShopID: shop}}, autoID, "+21624118849", f.deps())
+	outcome, err := runAutomationTest(context.Background(), auth.Auth{LoggedIn: true, User: actor, ActiveShop: auth.ActiveShop{ShopID: shop}}, autoID, "+21624118849", f.deps())
 	if err != nil {
 		t.Fatalf("rate limit is a business refusal, not an infra error: %v", err)
 	}
@@ -230,7 +230,7 @@ func TestProviderRefusalAuditedAsRejected(t *testing.T) {
 		template:   whatsapp.MerchantTemplate{ID: tmplID},
 		sendErr:    whatsapp.NewSendRejection(whatsapp.ErrCodeMetaAPIError, "provider refused"),
 	}
-	outcome, err := runAutomationTest(context.Background(), auth.Auth{LoggedIn:true, User: actor, ActiveShop: auth.ActiveShop{ShopID: shop}}, autoID, "+21624118849", f.deps())
+	outcome, err := runAutomationTest(context.Background(), auth.Auth{LoggedIn: true, User: actor, ActiveShop: auth.ActiveShop{ShopID: shop}}, autoID, "+21624118849", f.deps())
 	if err != nil {
 		t.Fatalf("a provider refusal is a business result: %v", err)
 	}
@@ -251,7 +251,7 @@ func TestInfrastructureFailureAuditedAsFailed(t *testing.T) {
 
 	boom := errors.New("database down")
 	f := &fakeTestSend{automationErr: boom}
-	outcome, err := runAutomationTest(context.Background(), auth.Auth{LoggedIn:true, User: actor, ActiveShop: auth.ActiveShop{ShopID: shop}}, autoID, "+21624118849", f.deps())
+	outcome, err := runAutomationTest(context.Background(), auth.Auth{LoggedIn: true, User: actor, ActiveShop: auth.ActiveShop{ShopID: shop}}, autoID, "+21624118849", f.deps())
 	if !errors.Is(err, boom) {
 		t.Fatalf("err = %v, want the underlying failure", err)
 	}
@@ -272,7 +272,7 @@ func TestTestSendRequiresPhone(t *testing.T) {
 	f := &fakeTestSend{
 		automation: &automations.Automation{ID: autoID, TemplateID: tmplID},
 	}
-	outcome, err := runAutomationTest(context.Background(), auth.Auth{LoggedIn:true, User: actor, ActiveShop: auth.ActiveShop{ShopID: shop}}, autoID, "   ", f.deps())
+	outcome, err := runAutomationTest(context.Background(), auth.Auth{LoggedIn: true, User: actor, ActiveShop: auth.ActiveShop{ShopID: shop}}, autoID, "   ", f.deps())
 	if err != nil || outcome != testSendNoPhone {
 		t.Fatalf("outcome = %v, err = %v, want testSendNoPhone", outcome, err)
 	}

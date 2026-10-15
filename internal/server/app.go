@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"whatsappconverty/internal/admin"
 	"whatsappconverty/internal/auth"
 	"whatsappconverty/internal/automations"
 	"whatsappconverty/internal/config"
@@ -24,6 +25,7 @@ type App struct {
 	Log         *slog.Logger
 	Pool        *pgxpool.Pool
 	Auth        *auth.Service
+	Admin       *admin.Repository
 	Shops       *shops.Repository
 	Dashboard   *dashboard.Repository
 	Converty    *converty.Service
@@ -53,6 +55,7 @@ func New(cfg config.Config, log *slog.Logger, pool *pgxpool.Pool) *App {
 		Log:         log,
 		Pool:        pool,
 		Auth:        auth.NewService(pool, *shopsRepo),
+		Admin:       admin.NewRepository(pool),
 		Shops:       shopsRepo,
 		Dashboard:   dashboard.NewRepository(pool),
 		Converty:    converty.NewService(cfg, pool, log),
@@ -113,48 +116,57 @@ func (a *App) InitializeRoutes(r *chi.Mux) {
 		pr.Post("/webhooks/meta", kit.Handler(a.handleMetaWebhook))
 	})
 
-	// Required authentication for the merchant dashboard.
+	// Required authentication for the platform console and merchant dashboard.
 	r.Group(func(pr chi.Router) {
 		pr.Use(kit.WithAuthentication(authConfig, true))
-		pr.Get("/dashboard", kit.Handler(a.handleOverview))
-		pr.Get("/auth/converty/connect", kit.Handler(a.handleConvertyConnect))
-		pr.Get("/auth/converty/callback", kit.Handler(a.handleConvertyCallback))
-		pr.Get("/integrations", kit.Handler(a.handleIntegrations))
-		pr.Post("/integrations/{id}/refresh", kit.Handler(a.handleIntegrationRefresh))
-		pr.Post("/integrations/{id}/test", kit.Handler(a.handleIntegrationTest))
-		pr.Post("/integrations/{id}/update", kit.Handler(a.handleIntegrationUpdate))
-		pr.Post("/integrations/{id}/activate", kit.Handler(a.handleIntegrationActivate))
-		pr.Get("/integrations/{id}/delete", kit.Handler(a.handleIntegrationDeletePreview))
-		pr.Post("/integrations/{id}/delete", kit.Handler(a.handleIntegrationDelete))
-		pr.Get("/automations", kit.Handler(a.handleAutomations))
-		pr.Get("/automations/new", kit.Handler(a.handleAutomationEdit))
-		pr.Post("/automations", kit.Handler(a.handleAutomationCreate))
-		pr.Get("/automations/{id}/edit", kit.Handler(a.handleAutomationEdit))
-		pr.Post("/automations/{id}/update", kit.Handler(a.handleAutomationUpdate))
-		pr.Post("/automations/{id}/toggle", kit.Handler(a.handleAutomationToggle))
-		pr.Post("/automations/{id}/test", kit.Handler(a.handleAutomationTest))
-		pr.Post("/automations/{id}/delete", kit.Handler(a.handleAutomationDelete))
-		pr.Get("/automations/{id}/history", kit.Handler(a.handleAutomationHistory))
-		pr.Post("/automations/{id}/retry-held", kit.Handler(a.handleAutomationRetryHeld))
-		pr.Get("/templates", kit.Handler(a.handleTemplates))
-		pr.Post("/templates/create", kit.Handler(a.handleTemplateCreate))
-		pr.Post("/templates/refresh", kit.Handler(a.handleTemplateRefresh))
-		pr.Get("/whatsapp", kit.Handler(a.handleWhatsappStatus))
-		pr.Get("/settings", kit.Handler(a.handleWhatsappSettings))
-		pr.Post("/settings/phone", kit.Handler(a.handleWhatsappSettingsPhone))
-		pr.Post("/settings/disable", kit.Handler(a.handleWhatsappSettingsDisable))
-		pr.Get("/billing", kit.Handler(a.handleBilling))
-		pr.Get("/whatsapp/onboard", kit.Handler(a.handleWhatsappOnboard))
-		pr.Post("/whatsapp/onboard", kit.Handler(a.handleWhatsappOnboardPost))
 
-		// JSON API for the dashboard and integrations. All endpoints are
-		// tenant-scoped from the authenticated shop.
-		pr.Get("/api/whatsapp/customers", kit.Handler(a.handleAPICustomers))
-		pr.Post("/api/whatsapp/customers", kit.Handler(a.handleAPICreateCustomer))
-		pr.Post("/api/whatsapp/consent", kit.Handler(a.handleAPIGrantConsent))
-		pr.Post("/api/whatsapp/revoke", kit.Handler(a.handleAPIRevokeConsent))
-		pr.Get("/api/whatsapp/templates", kit.Handler(a.handleAPITemplates))
-		pr.Post("/api/whatsapp/templates", kit.Handler(a.handleAPICreateTemplate))
+		// Platform operator console.
+		pr.Get("/admin", kit.Handler(a.handleAdminConsole))
+
+		// Merchant (shop-scoped) area. Admins are redirected to the console.
+		pr.Group(func(cr chi.Router) {
+			cr.Use(a.clientOnlyMiddleware)
+
+			cr.Get("/dashboard", kit.Handler(a.handleOverview))
+			cr.Get("/auth/converty/connect", kit.Handler(a.handleConvertyConnect))
+			cr.Get("/auth/converty/callback", kit.Handler(a.handleConvertyCallback))
+			cr.Get("/integrations", kit.Handler(a.handleIntegrations))
+			cr.Post("/integrations/{id}/refresh", kit.Handler(a.handleIntegrationRefresh))
+			cr.Post("/integrations/{id}/test", kit.Handler(a.handleIntegrationTest))
+			cr.Post("/integrations/{id}/update", kit.Handler(a.handleIntegrationUpdate))
+			cr.Post("/integrations/{id}/activate", kit.Handler(a.handleIntegrationActivate))
+			cr.Get("/integrations/{id}/delete", kit.Handler(a.handleIntegrationDeletePreview))
+			cr.Post("/integrations/{id}/delete", kit.Handler(a.handleIntegrationDelete))
+			cr.Get("/automations", kit.Handler(a.handleAutomations))
+			cr.Get("/automations/new", kit.Handler(a.handleAutomationEdit))
+			cr.Post("/automations", kit.Handler(a.handleAutomationCreate))
+			cr.Get("/automations/{id}/edit", kit.Handler(a.handleAutomationEdit))
+			cr.Post("/automations/{id}/update", kit.Handler(a.handleAutomationUpdate))
+			cr.Post("/automations/{id}/toggle", kit.Handler(a.handleAutomationToggle))
+			cr.Post("/automations/{id}/test", kit.Handler(a.handleAutomationTest))
+			cr.Post("/automations/{id}/delete", kit.Handler(a.handleAutomationDelete))
+			cr.Get("/automations/{id}/history", kit.Handler(a.handleAutomationHistory))
+			cr.Post("/automations/{id}/retry-held", kit.Handler(a.handleAutomationRetryHeld))
+			cr.Get("/templates", kit.Handler(a.handleTemplates))
+			cr.Post("/templates/create", kit.Handler(a.handleTemplateCreate))
+			cr.Post("/templates/refresh", kit.Handler(a.handleTemplateRefresh))
+			cr.Get("/whatsapp", kit.Handler(a.handleWhatsappStatus))
+			cr.Get("/settings", kit.Handler(a.handleWhatsappSettings))
+			cr.Post("/settings/phone", kit.Handler(a.handleWhatsappSettingsPhone))
+			cr.Post("/settings/disable", kit.Handler(a.handleWhatsappSettingsDisable))
+			cr.Get("/billing", kit.Handler(a.handleBilling))
+			cr.Get("/whatsapp/onboard", kit.Handler(a.handleWhatsappOnboard))
+			cr.Post("/whatsapp/onboard", kit.Handler(a.handleWhatsappOnboardPost))
+
+			// JSON API for the dashboard and integrations. All endpoints are
+			// tenant-scoped from the authenticated shop.
+			cr.Get("/api/whatsapp/customers", kit.Handler(a.handleAPICustomers))
+			cr.Post("/api/whatsapp/customers", kit.Handler(a.handleAPICreateCustomer))
+			cr.Post("/api/whatsapp/consent", kit.Handler(a.handleAPIGrantConsent))
+			cr.Post("/api/whatsapp/revoke", kit.Handler(a.handleAPIRevokeConsent))
+			cr.Get("/api/whatsapp/templates", kit.Handler(a.handleAPITemplates))
+			cr.Post("/api/whatsapp/templates", kit.Handler(a.handleAPICreateTemplate))
+		})
 	})
 
 	r.NotFound(kit.Handler(a.handleNotFound))
