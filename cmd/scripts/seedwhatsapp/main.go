@@ -58,7 +58,7 @@ func main() {
 		fatal(err.Error())
 	}
 
-	svc := whatsapp.NewService(cfg, pool, logger)
+	svc := whatsapp.NewService(cfg, pool, logger, nil)
 
 	// Sanity-check the token + ids before persisting anything.
 	if pn, err := svc.GetPhoneNumber(ctx, token, phoneNumberID); err != nil {

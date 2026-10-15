@@ -46,7 +46,7 @@ func main() {
 		messagingAccountID = cfg.MetaMessagingAccountID
 	}
 
-	svc := whatsapp.NewService(cfg, pool, logger)
+	svc := whatsapp.NewService(cfg, pool, logger, nil)
 	templates, err := svc.ListTemplates(ctx, token, messagingAccountID)
 	if err != nil {
 		fatal(fmt.Sprintf("list templates: %v", err))

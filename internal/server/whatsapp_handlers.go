@@ -49,7 +49,8 @@ func (a *App) handleWhatsappStatus(k *kit.Kit) error {
 		IsOwner:  principal.IsClient(),
 		IsAdmin:  principal.IsAdmin(),
 	}
-	return k.Render(vsettings.StatusCard(page, shop, a.Cfg.MetaPhoneNumber, a.Cfg.MetaVerifiedName))
+	m := a.Meta.Get()
+	return k.Render(vsettings.StatusCard(page, shop, m.PhoneNumber, m.VerifiedName))
 }
 
 // handleWhatsappSettings renders the owner-only WhatsApp settings page. It is
@@ -80,7 +81,8 @@ func (a *App) handleWhatsappSettings(k *kit.Kit) error {
 		IsOwner:  true,
 	}
 	flash := k.Request.URL.Query().Get("flash")
-	return k.Render(vsettings.SettingsPage(page, shop, flash, a.Cfg.MetaPhoneNumber, a.Cfg.MetaVerifiedName))
+	m := a.Meta.Get()
+	return k.Render(vsettings.SettingsPage(page, shop, flash, m.PhoneNumber, m.VerifiedName))
 }
 
 // handleWhatsappSettingsPhone updates the shop contact phone used on the

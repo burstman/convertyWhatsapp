@@ -28,7 +28,7 @@ func main() {
 		}
 	}
 
-	srv, err := worker.Start(cfg, logger)
+	srv, err := worker.Start(cfg, logger, nil)
 	if err != nil {
 		logger.Error("worker failed to start", "error", err)
 		os.Exit(1)

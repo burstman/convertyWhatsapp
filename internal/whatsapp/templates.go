@@ -82,7 +82,8 @@ type TemplateDraft struct {
 // are never sendable). Re-submitting the same name+language refreshes the
 // existing row.
 func (s *Service) CreateTemplate(ctx context.Context, shopID uuid.UUID, draft TemplateDraft) (MerchantTemplate, error) {
-	if s.cfg.MetaSystemUserToken == "" || s.cfg.MetaMessagingAccountID == "" {
+	m := s.meta.Get()
+	if m.SystemUserToken == "" || m.MessagingAccountID == "" {
 		return MerchantTemplate{}, &SendRejection{Code: ErrCodeMetaAPIError, Reason: "platform meta credentials not configured"}
 	}
 
@@ -99,8 +100,8 @@ func (s *Service) CreateTemplate(ctx context.Context, shopID uuid.UUID, draft Te
 			Message string `json:"message"`
 		} `json:"warnings"`
 	}
-	err := s.postJSON(ctx, s.cfg.MetaSystemUserToken,
-		fmt.Sprintf("%s/%s/%s/message_templates", s.cfg.MetaGraphURL, metaAPIVersion, s.cfg.MetaMessagingAccountID),
+	err := s.postJSON(ctx, m.SystemUserToken,
+		fmt.Sprintf("%s/%s/%s/message_templates", s.cfg.MetaGraphURL, metaAPIVersion, m.MessagingAccountID),
 		body, &resp)
 
 	approval := "pending"
@@ -222,10 +223,11 @@ type warnings []struct {
 // frontend. Templates Meta reports as MARKETING category (or rejected for
 // marketing) are also flagged unsendable.
 func (s *Service) SyncTemplates(ctx context.Context) (int, error) {
-	if s.cfg.MetaSystemUserToken == "" || s.cfg.MetaMessagingAccountID == "" {
+	m := s.meta.Get()
+	if m.SystemUserToken == "" || m.MessagingAccountID == "" {
 		return 0, nil
 	}
-	templates, err := s.ListTemplates(ctx, s.cfg.MetaSystemUserToken, s.cfg.MetaMessagingAccountID)
+	templates, err := s.ListTemplates(ctx, m.SystemUserToken, m.MessagingAccountID)
 	if err != nil {
 		return 0, err
 	}

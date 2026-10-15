@@ -18,7 +18,7 @@ func (a *App) handleMetaWebhookVerify(k *kit.Kit) error {
 	token := q.Get("hub.verify_token")
 	challenge := q.Get("hub.challenge")
 
-	if !whatsapp.VerifyWebhookChallenge(a.Cfg.MetaWebhookVerifyToken, mode, token, challenge) {
+	if !whatsapp.VerifyWebhookChallenge(a.Meta.Get().WebhookVerifyToken, mode, token, challenge) {
 		a.Log.Warn("meta webhook verify challenge rejected", "mode", mode)
 		return k.Text(http.StatusForbidden, "verification failed")
 	}
@@ -35,12 +35,13 @@ func (a *App) handleMetaWebhook(k *kit.Kit) error {
 		return err
 	}
 
-	if a.Cfg.MetaAppSecret == "" {
-		a.Log.Error("meta webhook: META_APP_SECRET not configured")
+	appSecret := a.Meta.Get().AppSecret
+	if appSecret == "" {
+		a.Log.Error("meta webhook: app secret not configured")
 		return k.Text(http.StatusInternalServerError, "not configured")
 	}
 	sig := k.Request.Header.Get("X-Hub-Signature-256")
-	if !whatsapp.VerifyWebhookSignature(a.Cfg.MetaAppSecret, sig, body) {
+	if !whatsapp.VerifyWebhookSignature(appSecret, sig, body) {
 		a.exposeRemoteIP(k)
 		a.Log.Warn("meta webhook signature verification failed")
 		return k.Text(http.StatusForbidden, "forbidden")

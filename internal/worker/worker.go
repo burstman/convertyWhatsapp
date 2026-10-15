@@ -12,6 +12,7 @@ import (
 	"whatsappconverty/internal/automations"
 	"whatsappconverty/internal/config"
 	"whatsappconverty/internal/database"
+	"whatsappconverty/internal/metaconfig"
 	"whatsappconverty/internal/queue"
 	"whatsappconverty/internal/whatsapp"
 )
@@ -29,14 +30,27 @@ type Server struct {
 }
 
 // Start wires the job runner and begins draining queued work. It owns its own
-// DB pool so it can run inside either process (app or worker).
-func Start(cfg config.Config, logger *slog.Logger) (*Server, error) {
+// DB pool so it can run inside either process (app or worker). When meta is
+// non-nil the caller (the web process) shares its admin-editable credential
+// store so an update applies to in-process sends without a restart; otherwise
+// the worker loads its own from the database.
+func Start(cfg config.Config, logger *slog.Logger, meta *metaconfig.Store) (*Server, error) {
 	pool, err := database.Connect(context.Background(), cfg.DatabaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("worker database connection failed: %w", err)
 	}
 
-	wa := whatsapp.NewService(cfg, pool, logger)
+	if meta == nil {
+		meta, err = metaconfig.NewStore(pool, cfg.EncryptionKeyResolved(), metaconfig.DefaultsFromConfig(cfg))
+		if err != nil {
+			return nil, fmt.Errorf("worker metaconfig: %w", err)
+		}
+		if err := meta.Load(context.Background()); err != nil {
+			logger.Warn("worker could not load stored meta credentials; using environment defaults", "error", err)
+		}
+	}
+
+	wa := whatsapp.NewService(cfg, pool, logger, meta)
 	auto := automations.NewProcessor(cfg, pool, logger, wa)
 	// The delivery layer re-checks the Converty integration immediately before
 	// every send, so the worker itself must not gate on it: one authoritative

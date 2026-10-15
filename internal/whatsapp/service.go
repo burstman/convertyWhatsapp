@@ -12,6 +12,7 @@ import (
 
 	"whatsappconverty/internal/config"
 	"whatsappconverty/internal/encrypt"
+	"whatsappconverty/internal/metaconfig"
 )
 
 // ErrNotConfigured is returned when no WhatsApp integration exists for the
@@ -26,10 +27,12 @@ type IntegrationChecker interface {
 }
 
 // Service talks to the Meta Graph API and enforces the platform's
-// single-WABA sending rules. Meta credentials are held centrally in config;
-// per-shop rows in whatsapp_integrations are legacy (Phase-1 token-paste).
+// single-WABA sending rules. Meta credentials come from the runtime
+// metaconfig.Store (admin-editable, DB-backed, encrypted); per-shop rows in
+// whatsapp_integrations are legacy (Phase-1 token-paste).
 type Service struct {
 	cfg          config.Config
+	meta         *metaconfig.Store
 	pool         *pgxpool.Pool
 	log          *slog.Logger
 	cipher       *encrypt.Cipher
@@ -39,13 +42,20 @@ type Service struct {
 	auditor      TestSendAuditor
 }
 
-func NewService(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger) *Service {
+// NewService builds the WhatsApp service. When meta is nil the service falls
+// back to a static store seeded from the environment, which keeps scripts and
+// tests working without a database.
+func NewService(cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, meta *metaconfig.Store) *Service {
+	if meta == nil {
+		meta = metaconfig.Static(metaconfig.DefaultsFromConfig(cfg))
+	}
 	cipher, err := encrypt.New(cfg.EncryptionKeyResolved())
 	if err != nil {
 		log.Error("whatsapp encryption key invalid; tokens will not persist", "error", err)
 	}
 	return &Service{
 		cfg:     cfg,
+		meta:    meta,
 		pool:    pool,
 		log:     log,
 		cipher:  cipher,
@@ -84,6 +94,19 @@ func (s *Service) AllowTestSend(ctx context.Context, shopID, actorID uuid.UUID) 
 // for integration-scoped sends (it never silently permits one).
 func (s *Service) SetIntegrationChecker(c IntegrationChecker) {
 	s.integrations = c
+}
+
+// Meta returns the current credential snapshot.
+func (s *Service) Meta() metaconfig.Values { return s.meta.Get() }
+
+// VerifyCredentials checks the currently configured credentials by resolving
+// the phone number with the Meta Graph API.
+func (s *Service) VerifyCredentials(ctx context.Context) (PhoneNumber, error) {
+	m := s.meta.Get()
+	if m.SystemUserToken == "" || m.PhoneNumberID == "" {
+		return PhoneNumber{}, errors.New("system user token and phone number id are not configured")
+	}
+	return s.GetPhoneNumber(ctx, m.SystemUserToken, m.PhoneNumberID)
 }
 
 // DecryptToken unwraps an encrypted Meta token stored for a shop.

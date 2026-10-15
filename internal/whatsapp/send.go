@@ -496,14 +496,15 @@ func (s *Service) SendTemplateMessage(ctx context.Context, req SendRequest) (*Se
 		return nil, err
 	}
 
-	if s.cfg.MetaSystemUserToken == "" || s.cfg.MetaPhoneNumberID == "" {
+	m := s.meta.Get()
+	if m.SystemUserToken == "" || m.PhoneNumberID == "" {
 		_ = s.markMessageFailed(ctx, msgID, ErrCodeMetaAPIError, "platform meta credentials not configured")
 		return nil, NewSendRejection(ErrCodeMetaAPIError, "platform meta credentials not configured")
 	}
 
-	metaID, sendErr := s.SendTemplate(ctx, s.cfg.MetaSystemUserToken, s.cfg.MetaPhoneNumberID,
+	metaID, sendErr := s.SendTemplate(ctx, m.SystemUserToken, m.PhoneNumberID,
 		customer.Phone, template.Name, template.Language, components,
-		MessagingAccountParam(s.cfg.MetaMessagingAccountID))
+		MessagingAccountParam(m.MessagingAccountID))
 	if sendErr != nil {
 		_ = s.markMessageFailed(ctx, msgID, ErrCodeMetaAPIError, sendErr.Error())
 		return nil, wrapMetaError(sendErr)
@@ -621,14 +622,15 @@ func (s *Service) SendTemplateTest(ctx context.Context, req TestTemplateRequest)
 		return nil, err
 	}
 
-	if s.cfg.MetaSystemUserToken == "" || s.cfg.MetaPhoneNumberID == "" {
+	m := s.meta.Get()
+	if m.SystemUserToken == "" || m.PhoneNumberID == "" {
 		_ = s.markMessageFailed(ctx, msgID, ErrCodeMetaAPIError, "platform meta credentials not configured")
 		return nil, NewSendRejection(ErrCodeMetaAPIError, "platform meta credentials not configured")
 	}
 
-	metaID, sendErr := s.SendTemplate(ctx, s.cfg.MetaSystemUserToken, s.cfg.MetaPhoneNumberID,
+	metaID, sendErr := s.SendTemplate(ctx, m.SystemUserToken, m.PhoneNumberID,
 		to, template.Name, template.Language, components,
-		MessagingAccountParam(s.cfg.MetaMessagingAccountID))
+		MessagingAccountParam(m.MessagingAccountID))
 	if sendErr != nil {
 		_ = s.markMessageFailed(ctx, msgID, ErrCodeMetaAPIError, sendErr.Error())
 		return nil, wrapMetaError(sendErr)

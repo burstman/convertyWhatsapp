@@ -55,7 +55,7 @@ func main() {
 		fatal(err.Error())
 	}
 
-	svc := whatsapp.NewService(cfg, pool, logger)
+	svc := whatsapp.NewService(cfg, pool, logger, nil)
 
 	integ, err := svc.Integration(ctx, shopID)
 	if err != nil {

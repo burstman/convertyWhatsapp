@@ -166,8 +166,9 @@ func (s *Service) purgeTemplate(ctx context.Context, j PurgeMarketingTemplateJob
 	s.log.Warn("deleting marketing-flagged template",
 		"shop_id", j.ShopID, "template_id", j.TemplateID, "name", j.Name, "language", j.Language)
 
-	if s.cfg.MetaSystemUserToken != "" && s.cfg.MetaMessagingAccountID != "" {
-		if err := s.DeleteTemplate(ctx, s.cfg.MetaSystemUserToken, s.cfg.MetaMessagingAccountID, j.Name, j.Language); err != nil {
+	m := s.meta.Get()
+	if m.SystemUserToken != "" && m.MessagingAccountID != "" {
+		if err := s.DeleteTemplate(ctx, m.SystemUserToken, m.MessagingAccountID, j.Name, j.Language); err != nil {
 			// Best-effort: Meta may already have removed it (404). The local
 			// row still transitions to deleted; the central account stays under
 			// Meta's policy.

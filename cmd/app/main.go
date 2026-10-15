@@ -16,6 +16,7 @@ import (
 	"whatsappconverty/internal/config"
 	"whatsappconverty/internal/database"
 	"whatsappconverty/internal/logutil"
+	"whatsappconverty/internal/metaconfig"
 	"whatsappconverty/internal/server"
 	"whatsappconverty/internal/worker"
 	"whatsappconverty/web/static"
@@ -58,19 +59,31 @@ func main() {
 		}
 	}
 
+	// One credential store shared by the web process and the in-process worker,
+	// so an admin edit in the console takes effect on the next send without a
+	// restart. It is seeded from the environment and overlaid with anything the
+	// operator has saved in the database.
+	meta, err := metaconfig.NewStore(pool, cfg.EncryptionKeyResolved(), metaconfig.DefaultsFromConfig(cfg))
+	if err != nil {
+		logger.Error("meta credential store failed to initialize", "error", err)
+		os.Exit(1)
+	}
+	if err := meta.Load(rootCtx); err != nil {
+		logger.Warn("could not load stored meta credentials; using environment defaults", "error", err)
+	}
 
 	// Run the job processor in-process as well as in the standalone worker: the
 	// queue is Postgres-backed and claims are leased, so two runners are safe, and
 	// the API stays able to deliver queued sends even if the worker service is
 	// stopped on a free tier.
-	workerServ, werr := worker.Start(cfg, logger)
+	workerServ, werr := worker.Start(cfg, logger, meta)
 	if werr != nil {
 		logger.Error("background worker failed to start; inbox/webhooks keep working, queued sends will wait", "error", werr)
 	} else {
 		defer workerServ.Shutdown()
 	}
 
-	app := server.New(cfg, logger, pool)
+	app := server.New(cfg, logger, pool, meta)
 	if err := app.Auth.EnsureAdmin(rootCtx, cfg.AdminEmail, cfg.AdminPassword); err != nil {
 		logger.Error("admin bootstrap failed", "error", err)
 	}

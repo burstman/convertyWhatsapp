@@ -1,0 +1,157 @@
+package viewsadmin
+
+import (
+	"whatsappconverty/web/views/components"
+	"whatsappconverty/web/views/layouts"
+)
+
+// WhatsappForm is the admin WhatsApp credential editor view model. Secret
+// fields are never sent to the browser; only whether they are configured.
+type WhatsappForm struct {
+	PhoneNumberID       string
+	MessagingAccountID  string
+	WaacID              string
+	BusinessPortfolioID string
+	PhoneNumber         string
+	VerifiedName        string
+	SystemUserTokenSet  bool
+	WebhookTokenSet     bool
+	AppSecretSet        bool
+	NoticeKind          string
+	NoticeText          string
+}
+
+// WhatsappConfig renders the admin-only editor for the platform's central
+// Meta/WhatsApp credentials. Changes are encrypted at rest and applied to
+// subsequent sends without a redeploy.
+templ WhatsappConfig(page components.Page, f WhatsappForm) {
+	@layouts.Shell(page) {
+		<div class="mx-auto max-w-3xl">
+			<div class="mb-6">
+				<h2 class="text-xl font-semibold text-slate-900">WhatsApp credentials</h2>
+				<p class="text-sm text-slate-500">
+					The central Meta credentials every shop shares. Stored encrypted and applied immediately.
+				</p>
+			</div>
+
+			if f.NoticeText != "" {
+				<div class={ "mb-6 rounded-lg border px-4 py-3 text-sm ", noticeClass(f.NoticeKind) }>{ f.NoticeText }</div>
+			}
+
+			<form method="post" action="/admin/whatsapp" class="rounded-lg border border-slate-200 bg-white shadow-sm">
+				<div class="border-b border-slate-100 px-6 py-4">
+					<h3 class="text-sm font-semibold text-slate-900">Meta Cloud API</h3>
+					<p class="text-xs text-slate-500">Required for every send. Leave a secret blank to keep the current value.</p>
+				</div>
+
+				<div class="space-y-5 px-6 py-5">
+					<div>
+						<label for="system_user_token" class="block text-sm font-medium text-slate-700">System user access token</label>
+						<input type="password" id="system_user_token" name="system_user_token" autocomplete="off"
+							placeholder={ secretPlaceholder(f.SystemUserTokenSet) }
+							class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"/>
+						<p class="mt-1 text-xs text-slate-500">Secret. Never expires for a system user.</p>
+					</div>
+
+					<div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
+						<div>
+							<label for="phone_number_id" class="block text-sm font-medium text-slate-700">Phone number ID</label>
+							<input type="text" id="phone_number_id" name="phone_number_id" value={ f.PhoneNumberID }
+								class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"/>
+						</div>
+						<div>
+							<label for="messaging_account_id" class="block text-sm font-medium text-slate-700">Messaging account ID</label>
+							<input type="text" id="messaging_account_id" name="messaging_account_id" value={ f.MessagingAccountID }
+								class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"/>
+						</div>
+					</div>
+				</div>
+
+				<div class="border-y border-slate-100 bg-slate-50 px-6 py-4">
+					<h3 class="text-sm font-semibold text-slate-900">Business identity</h3>
+					<p class="text-xs text-slate-500">Displayed to merchants and used when talking to the Graph API.</p>
+				</div>
+
+				<div class="space-y-5 px-6 py-5">
+					<div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
+						<div>
+							<label for="waac_id" class="block text-sm font-medium text-slate-700">WAAC ID</label>
+							<input type="text" id="waac_id" name="waac_id" value={ f.WaacID }
+								class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"/>
+						</div>
+						<div>
+							<label for="business_portfolio_id" class="block text-sm font-medium text-slate-700">Business portfolio ID</label>
+							<input type="text" id="business_portfolio_id" name="business_portfolio_id" value={ f.BusinessPortfolioID }
+								class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"/>
+						</div>
+					</div>
+					<div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
+						<div>
+							<label for="phone_number" class="block text-sm font-medium text-slate-700">Display phone number</label>
+							<input type="text" id="phone_number" name="phone_number" value={ f.PhoneNumber }
+								class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"/>
+						</div>
+						<div>
+							<label for="verified_name" class="block text-sm font-medium text-slate-700">Verified name</label>
+							<input type="text" id="verified_name" name="verified_name" value={ f.VerifiedName }
+								class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"/>
+						</div>
+					</div>
+				</div>
+
+				<div class="border-y border-slate-100 bg-slate-50 px-6 py-4">
+					<h3 class="text-sm font-semibold text-slate-900">Webhooks</h3>
+					<p class="text-xs text-slate-500">Used to verify Meta's subscription handshake and inbound status callbacks.</p>
+				</div>
+
+				<div class="space-y-5 px-6 py-5">
+					<div>
+						<label for="webhook_verify_token" class="block text-sm font-medium text-slate-700">Webhook verify token</label>
+						<input type="password" id="webhook_verify_token" name="webhook_verify_token" autocomplete="off"
+							placeholder={ secretPlaceholder(f.WebhookTokenSet) }
+							class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"/>
+						<p class="mt-1 text-xs text-slate-500">Secret. Must match the verify token configured in the Meta app.</p>
+					</div>
+					<div>
+						<label for="app_secret" class="block text-sm font-medium text-slate-700">App secret</label>
+						<input type="password" id="app_secret" name="app_secret" autocomplete="off"
+							placeholder={ secretPlaceholder(f.AppSecretSet) }
+							class="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"/>
+						<p class="mt-1 text-xs text-slate-500">Secret. Verifies the X-Hub-Signature-256 on every callback.</p>
+					</div>
+				</div>
+
+				<div class="flex items-center justify-end gap-3 border-t border-slate-100 px-6 py-4">
+					<button type="submit"
+						class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700">
+						Save credentials
+					</button>
+				</div>
+			</form>
+
+			<form method="post" action="/admin/whatsapp/verify" class="mt-4 flex items-center gap-3">
+				<button type="submit"
+					class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+					Test current credentials
+				</button>
+				<p class="text-xs text-slate-500">Resolves the phone number with the saved credentials.</p>
+			</form>
+		</div>
+	}
+}
+
+func secretPlaceholder(configured bool) string {
+	if configured {
+		return "•••••••• configured"
+	}
+	return "not set"
+}
+
+func noticeClass(kind string) string {
+	switch kind {
+	case "error":
+		return "border-rose-200 bg-rose-50 text-rose-800"
+	default:
+		return "border-emerald-200 bg-emerald-50 text-emerald-800"
+	}
+}

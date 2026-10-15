@@ -48,7 +48,7 @@ func main() {
 		fatal("META_SYSTEM_USER_TOKEN and META_MESSAGING_ACCOUNT_ID are required")
 	}
 
-	svc := whatsapp.NewService(cfg, pool, logger)
+	svc := whatsapp.NewService(cfg, pool, logger, nil)
 
 	numbers, err := svc.ListMessageNumbers(ctx, token, messagingAccountID)
 	if err != nil {

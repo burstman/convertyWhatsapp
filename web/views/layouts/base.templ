@@ -39,6 +39,7 @@ templ Shell(page components.Page) {
 					<nav class="space-y-1 p-4">
 						if page.IsAdmin {
 							@navLink(NavItem{"Clients", "/admin", "admin"}, page)
+							@navLink(NavItem{"WhatsApp", "/admin/whatsapp", "admin-whatsapp"}, page)
 						} else {
 							@navLink(NavItem{"Overview", "/dashboard", "overview"}, page)
 							@navLink(NavItem{"Shop Integration", "/integrations", "integrations"}, page)
