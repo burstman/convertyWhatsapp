@@ -159,7 +159,7 @@ func TestOwnerTestSendAcceptedAndAuditedWithoutPhone(t *testing.T) {
 
 	f := &fakeTestSend{
 		automation: &automations.Automation{ID: autoID, TemplateID: tmplID},
-		template:   whatsapp.MerchantTemplate{ID: tmplID, ShopID: shop},
+		template:   whatsapp.MerchantTemplate{ID: tmplID},
 	}
 	outcome, err := runAutomationTest(context.Background(), auth.Auth{LoggedIn:true, User: actor, ActiveShop: auth.ActiveShop{ShopID: shop}}, autoID, phone, f.deps())
 	if err != nil || outcome != testSendAccepted {
@@ -203,7 +203,7 @@ func TestRateLimitedTestSendIsAuditedAndNotAccepted(t *testing.T) {
 
 	f := &fakeTestSend{
 		automation: &automations.Automation{ID: autoID, TemplateID: tmplID},
-		template:   whatsapp.MerchantTemplate{ID: tmplID, ShopID: shop},
+		template:   whatsapp.MerchantTemplate{ID: tmplID},
 		sendErr:    &whatsapp.RateLimitExceeded{PerShop: true, TestSend: true},
 	}
 	outcome, err := runAutomationTest(context.Background(), auth.Auth{LoggedIn:true, User: actor, ActiveShop: auth.ActiveShop{ShopID: shop}}, autoID, "+21624118849", f.deps())
@@ -227,7 +227,7 @@ func TestProviderRefusalAuditedAsRejected(t *testing.T) {
 
 	f := &fakeTestSend{
 		automation: &automations.Automation{ID: autoID, TemplateID: tmplID},
-		template:   whatsapp.MerchantTemplate{ID: tmplID, ShopID: shop},
+		template:   whatsapp.MerchantTemplate{ID: tmplID},
 		sendErr:    whatsapp.NewSendRejection(whatsapp.ErrCodeMetaAPIError, "provider refused"),
 	}
 	outcome, err := runAutomationTest(context.Background(), auth.Auth{LoggedIn:true, User: actor, ActiveShop: auth.ActiveShop{ShopID: shop}}, autoID, "+21624118849", f.deps())

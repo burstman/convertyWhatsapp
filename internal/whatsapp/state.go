@@ -191,14 +191,17 @@ func (s *Service) consentState(ctx context.Context, shopID, customerID uuid.UUID
 	return c, err
 }
 
-// templateState loads a merchant's template scoped to the shop.
+// templateState loads a template available to the shop: it must belong to the
+// shop's client or be a global template.
 func (s *Service) templateState(ctx context.Context, shopID, templateID uuid.UUID) (TemplateState, error) {
 	var t TemplateState
 	var components []byte
 	err := s.pool.QueryRow(ctx, `
 		SELECT id, meta_template_name, language, category, approval_status, marketing_flagged, components
 		FROM templates
-		WHERE id = $1 AND shop_id = $2`,
+		WHERE id = $1
+		  AND (scope = 'global'
+		       OR client_id = (SELECT client_id FROM shops WHERE id = $2))`,
 		templateID, shopID,
 	).Scan(&t.ID, &t.Name, &t.Language, &t.Category, &t.ApprovalStatus, &t.MarketingFlagged, &components)
 	if err != nil {

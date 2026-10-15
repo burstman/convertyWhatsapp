@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"whatsappconverty/internal/config"
 	"whatsappconverty/internal/database"
@@ -15,17 +14,17 @@ import (
 )
 
 // seedtemplates imports the platform's templates from the central messaging
-// account into a shop's merchant-scoped templates table. In the multi-tenant
-// single-WABA model every merchant sends through the platform's WABA, so the
-// platform's approved template library IS the pool merchants can use. Only
-// Meta's own statuses are stored; approval never comes from the frontend.
+// account into the global templates table. In the multi-tenant single-WABA
+// model every merchant sends through the platform's WABA, so the platform's
+// approved template library IS the pool of global templates every client can
+// use. Only Meta's own statuses are stored; approval never comes from the
+// frontend.
 //
 // Required env:
 //
 //	META_SYSTEM_USER_TOKEN  system-user access token
 //
-// Optional: SHOP_ID (defaults to the first shop), META_MESSAGING_ACCOUNT_ID
-// (defaults to the central 2883242225383967).
+// Optional: META_MESSAGING_ACCOUNT_ID (defaults to the central one in config).
 func main() {
 	cfg := config.Load()
 	logger := logutil.New(cfg)
@@ -47,11 +46,6 @@ func main() {
 		messagingAccountID = cfg.MetaMessagingAccountID
 	}
 
-	shopID, err := resolveShop(ctx, pool, os.Getenv("SHOP_ID"))
-	if err != nil {
-		fatal(err.Error())
-	}
-
 	svc := whatsapp.NewService(cfg, pool, logger)
 	templates, err := svc.ListTemplates(ctx, token, messagingAccountID)
 	if err != nil {
@@ -68,10 +62,10 @@ func main() {
 		var id uuid.UUID
 		rowErr := pool.QueryRow(ctx, `
 			INSERT INTO templates (
-				shop_id, meta_template_name, meta_template_id, language, category,
+				scope, client_id, meta_template_name, meta_template_id, language, category,
 				status, approval_status, rejection_reason, components
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
-			ON CONFLICT (shop_id, meta_template_name, language) DO UPDATE SET
+			) VALUES ('global', NULL, $1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+			ON CONFLICT (meta_template_name, language) WHERE scope = 'global' DO UPDATE SET
 				meta_template_id   = EXCLUDED.meta_template_id,
 				category          = EXCLUDED.category,
 				status            = EXCLUDED.status,
@@ -80,7 +74,7 @@ func main() {
 				components        = EXCLUDED.components,
 				updated_at        = now()
 			RETURNING id`,
-			shopID, t.Name, t.ID, t.Language, t.Category,
+			t.Name, t.ID, t.Language, t.Category,
 			"imported", approval, "", t.Components,
 		).Scan(&id)
 		if rowErr != nil {
@@ -92,24 +86,7 @@ func main() {
 			"category", t.Category, "approval_status", approval, "id", id)
 	}
 
-	logger.Info("template import complete",
-		"shop_id", shopID, "found", len(templates), "imported", imported)
-}
-
-func resolveShop(ctx context.Context, pool *pgxpool.Pool, shopIDFlag string) (uuid.UUID, error) {
-	if shopIDFlag != "" {
-		id, err := uuid.Parse(shopIDFlag)
-		if err != nil {
-			return uuid.Nil, fmt.Errorf("invalid SHOP_ID: %w", err)
-		}
-		return id, nil
-	}
-	var id uuid.UUID
-	err := pool.QueryRow(ctx, `SELECT id FROM shops ORDER BY created_at LIMIT 1`).Scan(&id)
-	if err != nil {
-		return uuid.Nil, fmt.Errorf("no shop available to seed: %w", err)
-	}
-	return id, nil
+	logger.Info("template import complete", "found", len(templates), "imported", imported)
 }
 
 func fatal(msg string) {

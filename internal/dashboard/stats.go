@@ -52,9 +52,7 @@ func (r *Repository) Stats(ctx context.Context, shopID uuid.UUID) (Stats, error)
 	}
 
 	err = r.pool.QueryRow(ctx, `
-		SELECT whatsapp_enabled
-		FROM shops
-		WHERE id = $1`,
+		SELECT COALESCE((SELECT whatsapp_enabled FROM shops WHERE id = $1), false)`,
 		shopID,
 	).Scan(&s.WhatsappConnected)
 	if err != nil {

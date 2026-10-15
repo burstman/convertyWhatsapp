@@ -11,11 +11,20 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// MerchantTemplate is a merchant's template on the shared messaging account,
-// tracked with Meta's review lifecycle.
+// Template ownership scopes. A client owns their own templates; global
+// templates are managed by the platform and available to every client.
+const (
+	ScopeClient = "client"
+	ScopeGlobal = "global"
+)
+
+// MerchantTemplate is a template on the shared messaging account, tracked with
+// Meta's review lifecycle. It is owned by a client (ScopeClient) or by the
+// platform (ScopeGlobal, ClientID zero).
 type MerchantTemplate struct {
 	ID               uuid.UUID
-	ShopID           uuid.UUID
+	ClientID         uuid.UUID
+	Scope            string
 	Name             string
 	Language         string
 	Category         string
@@ -65,7 +74,8 @@ type TemplateDraft struct {
 }
 
 // CreateTemplate submits a template to Meta through the platform's central
-// account and records the merchant-scoped row. Approval is Meta's to give;
+// account and records the client-scoped row (owned by the shop's client, so it
+// is shared across all of that client's shops). Approval is Meta's to give;
 // the platform merely reflects pending/rejected/approved as it comes back.
 // Meta's creation-time warnings are captured verbatim; a warning that the
 // content is treated as marketing sets MarketingFlagged (and such templates
@@ -103,7 +113,7 @@ func (s *Service) CreateTemplate(ctx context.Context, shopID uuid.UUID, draft Te
 	}
 
 	var t MerchantTemplate
-	t.ShopID = shopID
+	t.Scope = ScopeClient
 	t.Name = draft.Name
 	t.Language = draft.Language
 	t.Category = draft.Category
@@ -119,11 +129,14 @@ func (s *Service) CreateTemplate(ctx context.Context, shopID uuid.UUID, draft Te
 
 	rowErr := s.pool.QueryRow(ctx, `
 		INSERT INTO templates (
-			shop_id, meta_template_name, meta_template_id, language, category,
+			client_id, scope, meta_template_name, meta_template_id, language, category,
 			status, approval_status, rejection_reason, marketing_flagged, meta_warnings,
 			marketing_flagged_at, components, variables_map, source
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb, $14)
-		ON CONFLICT (shop_id, meta_template_name, language) DO UPDATE SET
+		) VALUES (
+			(SELECT client_id FROM shops WHERE id = $1), 'client',
+			$2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb, $14
+		)
+		ON CONFLICT (client_id, meta_template_name, language) WHERE scope = 'client' DO UPDATE SET
 			meta_template_id   = EXCLUDED.meta_template_id,
 			category           = EXCLUDED.category,
 			status             = EXCLUDED.status,
@@ -137,11 +150,11 @@ func (s *Service) CreateTemplate(ctx context.Context, shopID uuid.UUID, draft Te
 			variables_map      = EXCLUDED.variables_map,
 			source             = EXCLUDED.source,
 			updated_at         = now()
-		RETURNING id, created_at, updated_at`,
+		RETURNING id, client_id, created_at, updated_at`,
 		shopID, draft.Name, resp.ID, draft.Language, draft.Category,
 		t.Status, approval, rejection, t.MarketingFlagged, t.MetaWarnings,
 		flaggedAtExpr(t.MarketingFlagged), draft.Components, draft.Variables, t.Source,
-	).Scan(&t.ID, &t.CreatedAt, &t.UpdatedAt)
+	).Scan(&t.ID, &t.ClientID, &t.CreatedAt, &t.UpdatedAt)
 	if rowErr != nil {
 		return MerchantTemplate{}, fmt.Errorf("store template: %w", rowErr)
 	}
@@ -268,15 +281,17 @@ func NormalizeApproval(status string) string {
 	}
 }
 
-// Templates lists a merchant's templates, newest first.
+// Templates lists the templates available to a shop: the shop's client's own
+// templates plus the platform's global ones, newest first.
 func (s *Service) Templates(ctx context.Context, shopID uuid.UUID) ([]MerchantTemplate, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, shop_id, meta_template_name, language, category, status,
+		SELECT id, client_id, scope, meta_template_name, language, category, status,
 		       approval_status, rejection_reason, marketing_flagged, meta_warnings,
 		       meta_template_id, components, COALESCE(variables_map, '[]'::jsonb), source,
 		       created_at, updated_at
 		FROM templates
-		WHERE shop_id = $1
+		WHERE scope = 'global'
+		   OR client_id = (SELECT client_id FROM shops WHERE id = $1)
 		ORDER BY created_at DESC`,
 		shopID,
 	)
@@ -296,15 +311,18 @@ func (s *Service) Templates(ctx context.Context, shopID uuid.UUID) ([]MerchantTe
 	return out, rows.Err()
 }
 
-// Template returns one merchant template scoped to its shop.
+// Template returns one template scoped to the shop: it must belong to the
+// shop's client or be a global template.
 func (s *Service) Template(ctx context.Context, shopID, templateID uuid.UUID) (MerchantTemplate, error) {
 	row := s.pool.QueryRow(ctx, `
-		SELECT id, shop_id, meta_template_name, language, category, status,
+		SELECT id, client_id, scope, meta_template_name, language, category, status,
 		       approval_status, rejection_reason, marketing_flagged, meta_warnings,
 		       meta_template_id, components, COALESCE(variables_map, '[]'::jsonb), source,
 		       created_at, updated_at
 		FROM templates
-		WHERE id = $1 AND shop_id = $2`,
+		WHERE id = $1
+		  AND (scope = 'global'
+		       OR client_id = (SELECT client_id FROM shops WHERE id = $2))`,
 		templateID, shopID,
 	)
 	t, err := scanTemplate(row)
@@ -320,12 +338,16 @@ type templateScanner interface {
 
 func scanTemplate(row templateScanner) (MerchantTemplate, error) {
 	var t MerchantTemplate
+	var clientID *uuid.UUID
 	var varJSON []byte
-	err := row.Scan(&t.ID, &t.ShopID, &t.Name, &t.Language, &t.Category,
+	err := row.Scan(&t.ID, &clientID, &t.Scope, &t.Name, &t.Language, &t.Category,
 		&t.Status, &t.ApprovalStatus, &t.RejectionReason, &t.MarketingFlagged, &t.MetaWarnings,
 		&t.MetaTemplateID, &t.Components, &varJSON, &t.Source, &t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
 		return MerchantTemplate{}, err
+	}
+	if clientID != nil {
+		t.ClientID = *clientID
 	}
 	if len(varJSON) > 0 && string(varJSON) != "[]" && string(varJSON) != "null" {
 		_ = json.Unmarshal(varJSON, &t.Variables)

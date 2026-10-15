@@ -50,75 +50,12 @@ templ RegisterPage() {
 	}
 }
 
-// RedeemInvitePage renders the "set your first password" form for a pending
-// member. The token in the URL is a single-use capability link issued by the
-// shop owner on the /team page.
-templ RedeemInvitePage(token string) {
-	@layouts.AuthLayout("Join your shop") {
-		@RedeemInviteForm(InviteRedeemValues{}, validate.Errors{}, token)
-	}
-}
-
-// RedeemInviteError is shown when an invite link is unknown, expired or
-// already used. It offers to sign in in case the account is already active.
-templ RedeemInviteError() {
-	@layouts.AuthLayout("Invitation invalid") {
-		<div class="rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
-			<h2 class="text-lg font-semibold text-slate-900">That invitation is no longer valid</h2>
-			<p class="mt-2 text-sm text-slate-500">
-				The link may have expired (invitations last 7 days) or already been used. Ask your shop owner for a
-				new invite, or sign in if your account is active.
-			</p>
-			<p class="mt-6 text-center text-sm text-slate-500">
-				<a href="/login" class="font-medium text-indigo-600 hover:text-indigo-500">Sign in</a>
-			</p>
-		</div>
-	}
-}
-
-templ RedeemInviteForm(values InviteRedeemValues, errors validate.Errors, token string) {
-	<div class="rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
-		<h2 class="text-lg font-semibold text-slate-900">Set your password</h2>
-		<p class="mt-1 text-sm text-slate-500">
-			Your shop owner invited you to Converty WhatsApp. Choose a password to activate your account.
-		</p>
-		<form method="POST" action={ "/invite/" + token } class="mt-6 space-y-4">
-			<div>
-				<label for="password" class="block text-sm font-medium text-slate-700">Password</label>
-				<input type="password" id="password" name="password" autocomplete="new-password" required
-					class="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500"/>
-				@components.FieldErrors("password", errors)
-			</div>
-			<div>
-				<label for="confirm_password" class="block text-sm font-medium text-slate-700">Confirm password</label>
-				<input type="password" id="confirm_password" name="confirm_password" autocomplete="new-password" required
-					class="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500"/>
-				@components.FieldErrors("confirmPassword", errors)
-			</div>
-			<button type="submit"
-				class="w-full rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500">
-				Activate account
-			</button>
-		</form>
-		<p class="mt-6 text-center text-sm text-slate-500">
-			Already active?
-			<a href="/login" class="font-medium text-indigo-600 hover:text-indigo-500">Sign in</a>
-		</p>
-	</div>
-}
-
 templ RegisterForm(values RegisterValues, errors validate.Errors) {
 	<div class="rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
 		<h2 class="text-lg font-semibold text-slate-900">Create your account</h2>
 		<form method="POST" action="/register" class="mt-6 space-y-4">
-			<div>
-				<label for="shop_name" class="block text-sm font-medium text-slate-700">Shop name</label>
-				<input type="text" id="shop_name" name="shop_name" value={ values.ShopName } required
-					class="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500"/>
-				@components.FieldErrors("shopName", errors)
-			</div>
-			<div>
-				<label for="name" class="block text-sm font-medium text-slate-700">Your name</label>
+		<div>
+			<label for="name" class="block text-sm font-medium text-slate-700">Your name</label>
 				<input type="text" id="name" name="name" value={ values.Name } required
 					class="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500"/>
 				@components.FieldErrors("name", errors)

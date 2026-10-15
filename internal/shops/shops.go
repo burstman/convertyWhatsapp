@@ -16,6 +16,7 @@ var ErrNotFound = errors.New("shop not found")
 
 type Shop struct {
 	ID                      uuid.UUID  `json:"id"`
+	ClientID                uuid.UUID  `json:"client_id"`
 	Name                    string     `json:"name"`
 	Phone                   string     `json:"phone"`
 	Status                  string     `json:"status"`
@@ -33,14 +34,16 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 	return &Repository{pool: pool}
 }
 
-func (r *Repository) Create(ctx context.Context, q database.Querier, name string) (Shop, error) {
+// Create makes a shop owned by a client. Every shop belongs to exactly one
+// client account.
+func (r *Repository) Create(ctx context.Context, q database.Querier, clientID uuid.UUID, name string) (Shop, error) {
 	var s Shop
 	err := q.QueryRow(ctx, `
-		INSERT INTO shops (name)
-		VALUES ($1)
-		RETURNING id, name, status, updated_at, created_at`,
-		name,
-	).Scan(&s.ID, &s.Name, &s.Status, &s.UpdatedAt, &s.CreatedAt)
+		INSERT INTO shops (client_id, name)
+		VALUES ($1, $2)
+		RETURNING id, client_id, name, status, updated_at, created_at`,
+		clientID, name,
+	).Scan(&s.ID, &s.ClientID, &s.Name, &s.Status, &s.UpdatedAt, &s.CreatedAt)
 	if err != nil {
 		return Shop{}, err
 	}
@@ -50,11 +53,11 @@ func (r *Repository) Create(ctx context.Context, q database.Querier, name string
 func (r *Repository) GetByID(ctx context.Context, id uuid.UUID) (Shop, error) {
 	var s Shop
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, name, phone, status, whatsapp_enabled, whatsapp_terms_accepted_at, created_at, updated_at
+		SELECT id, client_id, name, phone, status, whatsapp_enabled, whatsapp_terms_accepted_at, created_at, updated_at
 		FROM shops
 		WHERE id = $1`,
 		id,
-	).Scan(&s.ID, &s.Name, &s.Phone, &s.Status, &s.WhatsappEnabled, &s.WhatsappTermsAcceptedAt, &s.CreatedAt, &s.UpdatedAt)
+	).Scan(&s.ID, &s.ClientID, &s.Name, &s.Phone, &s.Status, &s.WhatsappEnabled, &s.WhatsappTermsAcceptedAt, &s.CreatedAt, &s.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Shop{}, ErrNotFound
 	}
