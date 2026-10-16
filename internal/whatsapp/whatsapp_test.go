@@ -385,10 +385,11 @@ func TestParseWebhookStatuses(t *testing.T) {
 		}]
 	}`
 
-	updates, err := ParseWebhook([]byte(payload))
+	delivery, err := ParseWebhook([]byte(payload))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
+	updates := delivery.Statuses
 	if len(updates) != 2 {
 		t.Fatalf("got %d updates, want 2", len(updates))
 	}
@@ -401,7 +402,7 @@ func TestParseWebhookStatuses(t *testing.T) {
 }
 
 func TestParseWebhookNoStatuses(t *testing.T) {
-	payload := `{"object":"whatsapp_business_account","entry":[{"changes":[{"value":{"messages":[{"id":"wm1"}]}}]}]}`
+	payload := `{"object":"whatsapp_business_account","entry":[{"changes":[{"value":{}}]}]}`
 	if _, err := ParseWebhook([]byte(payload)); err == nil {
 		t.Fatal("expected error for delivery without statuses")
 	}

@@ -1,6 +1,8 @@
 package layouts
 
 import (
+	"strconv"
+
 	"whatsappconverty/web/views/components"
 )
 
@@ -13,6 +15,27 @@ type NavItem struct {
 templ navLink(item NavItem, page components.Page) {
 	<a href={ templ.SafeURL(item.Href) } class={ "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition ", page.ActiveClass(item.Section) }>
 		{ item.Label }
+	</a>
+}
+
+// inboxUnreadLabel caps the nav badge at "9+".
+func inboxUnreadLabel(n int) string {
+	if n > 9 {
+		return "9+"
+	}
+	return strconv.Itoa(n)
+}
+
+// inboxNavLink is the platform-inbox nav entry, carrying the unread badge that
+// inbox requests refresh out-of-band.
+templ inboxNavLink(page components.Page) {
+	<a href="/inbox" class={ "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition ", page.ActiveClass("inbox") }>
+		Inbox
+		if page.UnreadInbox > 0 {
+			<span id="inbox-nav-badge" class="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-indigo-500 px-1.5 text-[10px] font-bold text-white">{ inboxUnreadLabel(page.UnreadInbox) }</span>
+		} else {
+			<span id="inbox-nav-badge" class="hidden"></span>
+		}
 	</a>
 }
 
@@ -31,6 +54,7 @@ templ Shell(page components.Page) {
 			<script src="/static/js/htmx.min.js" defer></script>
 			<script src="/static/js/alpine.min.js" defer></script>
 			<script src="/static/js/csrf.js" defer></script>
+			<script src="/static/js/voice.js" defer></script>
 		</head>
 		<body class="h-full bg-slate-100 text-slate-900 antialiased">
 			<div class="flex min-h-full" x-data="{ sidebarOpen: false }">
@@ -43,6 +67,7 @@ templ Shell(page components.Page) {
 						if page.IsAdmin {
 							@navLink(NavItem{"Clients", "/admin", "admin"}, page)
 							@navLink(NavItem{"WhatsApp", "/admin/whatsapp", "admin-whatsapp"}, page)
+							@inboxNavLink(page)
 						} else {
 							@navLink(NavItem{"Overview", "/dashboard", "overview"}, page)
 							@navLink(NavItem{"Shop Integration", "/integrations", "integrations"}, page)

@@ -27,6 +27,34 @@ type StatusError struct {
 	Title string
 }
 
+// InboundMessage is a message a customer sent to the operator's WhatsApp
+// number. WhatsApp Business Cloud API delivers these under the same webhook
+// path as status updates, so both are parsed from one delivery.
+type InboundMessage struct {
+	MetaMessageID string
+	From          string
+	ProfileName   string
+	Timestamp     int64
+	Type          string // text | image | audio | video | document | location | ...
+	TextBody      string
+	PhoneNumberID string // the operator number that received it (metadata)
+	// MediaID/MIME/duration are present for media messages (audio/voice,
+	// image...); TextBody is empty for them. The media bytes are downloaded
+	// later via DownloadMedia and stored on the chat_messages row.
+	MediaID        string
+	MediaMime      string
+	MediaFilename  string
+	MediaDurationMS int
+	Caption        string
+}
+
+// WebhookDelivery is the combined decode of one Meta webhook POST: delivery
+// statuses for outbound messages plus customer messages that arrived.
+type WebhookDelivery struct {
+	Statuses []StatusUpdate
+	Inbound  []InboundMessage
+}
+
 // VerifyWebhookChallenge implements Meta's GET subscription handshake:
 // hub.mode=subscribe, hub.verify_token must equal the configured token, then
 // echo hub.challenge verbatim.
@@ -57,15 +85,20 @@ func VerifyWebhookSignature(appSecret, signatureHeader string, rawBody []byte) b
 	return hmac.Equal(got, hmacSHA256(appSecret, rawBody))
 }
 
-// ParseWebhook decodes one Meta webhook delivery into ordered status updates.
-// Unknown fields are ignored; a delivery with no statuses returns an error.
-func ParseWebhook(body []byte) ([]StatusUpdate, error) {
+// ParseWebhook decodes one Meta webhook delivery into status updates for
+// outbound messages and customer messages. A delivery that carries neither is
+// an error (usually a non-WhatsApp ping).
+func ParseWebhook(body []byte) (WebhookDelivery, error) {
+	var out WebhookDelivery
 	var p struct {
 		Entry []struct {
 			Changes []struct {
 				Value struct {
 					MessagingProduct string `json:"messaging_product"`
-					Statuses         []struct {
+					Metadata         struct {
+						PhoneNumberID string `json:"phone_number_id"`
+					} `json:"metadata"`
+					Statuses []struct {
 						ID          string `json:"id"`
 						Status      string `json:"status"`
 						Timestamp   string `json:"timestamp"`
@@ -75,19 +108,57 @@ func ParseWebhook(body []byte) ([]StatusUpdate, error) {
 							Title string `json:"title"`
 						} `json:"errors"`
 					} `json:"statuses"`
+Messages []struct {
+					From      string `json:"from"`
+					ID        string `json:"id"`
+					Timestamp string `json:"timestamp"`
+					Type      string `json:"type"`
+					Text      struct {
+						Body string `json:"body"`
+					} `json:"text"`
+					Audio struct {
+						ID         string `json:"id"`
+						MimeType   string `json:"mime_type"`
+						SHA256     string `json:"sha256"`
+						Voice      bool   `json:"voice"`
+						DurationMS int    `json:"duration_ms"`
+					} `json:"audio"`
+					Image struct {
+						ID       string `json:"id"`
+						MimeType string `json:"mime_type"`
+						SHA256   string `json:"sha256"`
+						Caption  string `json:"caption"`
+					} `json:"image"`
+					Document struct {
+						ID       string `json:"id"`
+						MimeType string `json:"mime_type"`
+						Filename string `json:"filename"`
+					} `json:"document"`
+				} `json:"messages"`
+					Contacts []struct {
+						Profile struct {
+							Name string `json:"name"`
+						} `json:"profile"`
+						WaID string `json:"wa_id"`
+					} `json:"contacts"`
 				} `json:"value"`
 			} `json:"changes"`
 		} `json:"entry"`
 	}
 	if err := json.Unmarshal(body, &p); err != nil {
-		return nil, err
+		return out, err
 	}
 
-	var out []StatusUpdate
+	profileNames := make(map[string]string)
 	for _, entry := range p.Entry {
 		for _, ch := range entry.Changes {
 			if ch.Value.MessagingProduct != "" && ch.Value.MessagingProduct != "whatsapp" {
 				continue
+			}
+			for _, c := range ch.Value.Contacts {
+				if c.WaID != "" && c.Profile.Name != "" {
+					profileNames[c.WaID] = c.Profile.Name
+				}
 			}
 			for _, s := range ch.Value.Statuses {
 				u := StatusUpdate{
@@ -101,12 +172,42 @@ func ParseWebhook(body []byte) ([]StatusUpdate, error) {
 				for _, e := range s.Errors {
 					u.Errors = append(u.Errors, StatusError{Code: e.Code, Title: e.Title})
 				}
-				out = append(out, u)
+				out.Statuses = append(out.Statuses, u)
+			}
+			for _, m := range ch.Value.Messages {
+				im := InboundMessage{
+					MetaMessageID: m.ID,
+					From:          m.From,
+					Type:          m.Type,
+					TextBody:      m.Text.Body,
+					PhoneNumberID: ch.Value.Metadata.PhoneNumberID,
+				}
+				switch m.Type {
+				case "audio", "voice":
+					im.MediaID = m.Audio.ID
+					im.MediaMime = m.Audio.MimeType
+					im.MediaDurationMS = m.Audio.DurationMS
+				case "image":
+					im.MediaID = m.Image.ID
+					im.MediaMime = m.Image.MimeType
+					im.Caption = m.Image.Caption
+				case "document":
+					im.MediaID = m.Document.ID
+					im.MediaMime = m.Document.MimeType
+					im.MediaFilename = m.Document.Filename
+				}
+				if n, err := strconv.ParseInt(m.Timestamp, 10, 64); err == nil {
+					im.Timestamp = n
+				}
+				if name, ok := profileNames[m.From]; ok {
+					im.ProfileName = name
+				}
+				out.Inbound = append(out.Inbound, im)
 			}
 		}
 	}
-	if len(out) == 0 {
-		return nil, errors.New("webhook delivery carried no statuses")
+	if len(out.Statuses) == 0 && len(out.Inbound) == 0 {
+		return out, errors.New("webhook delivery carried no statuses or messages")
 	}
 	return out, nil
 }

@@ -47,21 +47,38 @@ func (a *App) handleMetaWebhook(k *kit.Kit) error {
 		return k.Text(http.StatusForbidden, "forbidden")
 	}
 
-	updates, err := whatsapp.ParseWebhook(body)
+	delivery, err := whatsapp.ParseWebhook(body)
 	if err != nil {
 		a.Log.Warn("meta webhook parse failed", "error", err.Error())
 		return k.Text(http.StatusOK, "ok") // acknowledge; nothing actionable here
 	}
 
-	for _, u := range updates {
+	// Delivery statuses advance both the template send ledger and any matching
+	// free-form inbox reply; the same status event is applied to whichever
+	// ledger owns the message id.
+	for _, u := range delivery.Statuses {
 		if applyErr := a.WhatsApp.ApplyStatusUpdate(k.Request.Context(), u); applyErr != nil {
 			a.Log.Warn("meta webhook status apply failed",
 				"meta_message_id", u.MetaMessageID, "status", u.Status, "error", applyErr.Error())
+		} else {
+			a.Log.Info("meta webhook status applied",
+				"meta_message_id", u.MetaMessageID, "status", u.Status,
+				"errors", len(u.Errors))
+		}
+		if chatErr := a.WhatsApp.ApplyChatStatusUpdate(k.Request.Context(), u); chatErr != nil {
+			a.Log.Warn("meta webhook chat status apply failed",
+				"meta_message_id", u.MetaMessageID, "status", u.Status, "error", chatErr.Error())
+		}
+	}
+
+	// Customer messages feed the admin inbox.
+	for _, m := range delivery.Inbound {
+		if _, upErr := a.WhatsApp.UpsertInbound(k.Request.Context(), m); upErr != nil {
+			a.Log.Warn("meta webhook inbound store failed",
+				"meta_message_id", m.MetaMessageID, "from", m.From, "error", upErr.Error())
 			continue
 		}
-		a.Log.Info("meta webhook status applied",
-			"meta_message_id", u.MetaMessageID, "status", u.Status,
-			"errors", len(u.Errors))
+		a.Log.Info("meta webhook inbound stored", "meta_message_id", m.MetaMessageID, "from", m.From, "type", m.Type)
 	}
 
 	return k.Text(http.StatusOK, "EVENT_RECEIVED")

@@ -1,6 +1,6 @@
 # Render Blueprint for Converty WhatsApp Notification Platform.
-# Creates: web service
-# PostgreSQL is provided by Neon (external) — set DATABASE_URL manually.
+# Creates: web service (Docker runtime; image bundles ffmpeg for inbox voice
+# notes). PostgreSQL is provided by Neon (external) — set DATABASE_URL manually.
 # The job queue and send rate limiter live in Postgres, so no Redis instance
 # is provisioned.
 #
@@ -9,12 +9,11 @@
 services:
   - type: web
     name: converty-whatsapp-api
-    runtime: go
+    runtime: docker
+    dockerfilePath: ./Dockerfile
     plan: free
-    buildCommand: go build -o bin/api ./cmd/app && go build -o bin/migrate ./cmd/scripts/migrate
     # NOTE: free tier does not support preDeployCommand; run ./bin/migrate
     # once via the Render Shell after the first deploy, and afterwards on demand.
-    startCommand: ./bin/api
     healthCheckPath: /healthz
     envVars:
       - key: APP_ENV

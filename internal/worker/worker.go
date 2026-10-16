@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -16,6 +17,14 @@ import (
 	"whatsappconverty/internal/queue"
 	"whatsappconverty/internal/whatsapp"
 )
+
+// mediaRetention is how long stored inbox media (voice notes, images) is kept.
+// The bytes are dropped after this, not the message rows, so the conversation
+// history keeps reading its label with no player.
+const mediaRetention = 30 * 24 * time.Hour
+
+// mediaPurgeInterval is how often the retention job scans for expired media.
+const mediaPurgeInterval = 12 * time.Hour
 
 // Server runs the background job processor. It can run inside the web process
 // (Render free tier has no background-worker service type) or standalone via
@@ -63,10 +72,42 @@ func Start(cfg config.Config, logger *slog.Logger, meta *metaconfig.Store) (*Ser
 
 	ctx, stop := context.WithCancel(context.Background())
 	runner.Start(ctx)
+	go mediaPurgeLoop(ctx, logger, wa)
 
 	logger.Info("background worker started",
 		"queue", "postgres", "job_interval", queue.DefaultInterval)
 	return &Server{log: logger, runner: runner, pool: pool, stop: stop}, nil
+}
+
+// mediaPurgeLoop clears stored inbox media once it is older than the 30-day
+// retention window. The bytes are dropped, not the message rows, so the
+// conversation history keeps its label with no player.
+func mediaPurgeLoop(ctx context.Context, logger *slog.Logger, wa *whatsapp.Service) {
+	run := func() {
+		n, err := wa.PurgeChatMedia(ctx, time.Now().Add(-mediaRetention))
+		if err != nil {
+			logger.Warn("chat media purge failed", "error", err)
+			return
+		}
+		if n > 0 {
+			logger.Info("chat media purge cleared media rows", "count", n)
+		}
+	}
+
+	// Run once at boot so a long-idle instance catches up promptly, then on the
+	// regular interval.
+	run()
+
+	ticker := time.NewTicker(mediaPurgeInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			run()
+		}
+	}
 }
 
 // automationLookup is the part of the automation processor the gate needs. It is

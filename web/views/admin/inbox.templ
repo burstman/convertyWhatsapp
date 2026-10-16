@@ -1,0 +1,519 @@
+package viewsadmin
+
+import (
+	"fmt"
+	"hash/fnv"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+
+	"whatsappconverty/internal/i18n"
+	"whatsappconverty/internal/whatsapp"
+	"whatsappconverty/web/views/components"
+	"whatsappconverty/web/views/layouts"
+)
+
+// chatClock renders the wall-clock time for a bubble.
+func chatClock(t time.Time) string {
+	return t.Local().Format("15:04")
+}
+
+// phoneDisplay formats a stored phone (digits only) for display.
+func phoneDisplay(phone string) string {
+	if phone == "" {
+		return "…"
+	}
+	return "+" + phone
+}
+
+func chatStatusLabel(dict *i18n.Dict, s string) string {
+	switch s {
+	case "queued":
+		return dict.T("inbox.statusQueued")
+	case "sent":
+		return dict.T("inbox.statusSent")
+	case "delivered":
+		return dict.T("inbox.statusDelivered")
+	case "read":
+		return dict.T("inbox.statusRead")
+	case "failed":
+		return dict.T("inbox.statusFailed")
+	}
+	return ""
+}
+
+// conversationName prefers the profile name WhatsApp attached to the customer,
+// falling back to the display number.
+func conversationName(c whatsapp.Conversation) string {
+	if c.CustomerName != "" {
+		return c.CustomerName
+	}
+	return phoneDisplay(c.CustomerPhone)
+}
+
+func unreadLabel(n int) string {
+	if n > 9 {
+		return "9+"
+	}
+	return fmt.Sprintf("%d", n)
+}
+
+// totalUnread sums the unread count across every conversation, for the nav
+// badge and the inbox sidebar.
+func totalUnread(threads []whatsapp.Conversation) int {
+	n := 0
+	for _, t := range threads {
+		n += t.UnreadCount
+	}
+	return n
+}
+
+// ActiveInboxThread bundles the open conversation for the two-pane inbox.
+type ActiveInboxThread struct {
+	Conv whatsapp.Conversation
+	Msgs []whatsapp.ChatMessage
+	Err  string
+	Ok   string
+}
+
+func activeID(active *ActiveInboxThread) uuid.UUID {
+	if active == nil {
+		return uuid.Nil
+	}
+	return active.Conv.ID
+}
+
+// InboxPage is the platform two-pane inbox: the conversation list on the left,
+// the open thread (or a selector hint) on the right. The layout and the mobile
+// sidebar/detail toggle mirror the shop chat screen.
+templ InboxPage(page components.Page, threads []whatsapp.Conversation, active *ActiveInboxThread, flash string) {
+	@layouts.Shell(page) {
+		<div class="space-y-6">
+			<div class="flex items-start justify-between gap-4">
+				<div>
+					<h2 class="text-2xl font-bold text-slate-900">{ page.T("inbox.title") }</h2>
+					<p class="mt-1 text-sm text-slate-500">{ page.T("inbox.subtitle") }</p>
+				</div>
+			</div>
+
+			if len(threads) == 0 {
+				<div class="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
+					<div class="text-sm font-semibold text-slate-700">{ page.T("inbox.noConvosTitle") }</div>
+					<div class="mt-1 text-sm text-slate-500">{ page.T("inbox.noConvosBody") }</div>
+				</div>
+			} else {
+				if flash != "" {
+					<div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{ flash }</div>
+				}
+				<div class="flex h-[62vh] min-h-[28rem] flex-col overflow-hidden rounded-xl border border-[#e8eeeb] bg-white shadow-sm md:h-[calc(100vh-10.5rem)] md:flex-row" x-data="{ showDetail: false, filter: 'all', q: '' }">
+					<div :class="showDetail ? 'hidden md:flex' : 'flex'" class="min-h-0 flex-col border-b border-[#e8eeeb] bg-white md:w-[330px] md:shrink-0 md:border-b-0 md:border-r">
+						<header class="flex items-center justify-between px-5 pb-3 pt-4">
+							<h3 class="text-[17px] font-semibold text-[#202c33]">{ page.T("inbox.chats") }</h3>
+							<span class="rounded-full bg-[#e5f3ec] px-2 py-0.5 text-[10px] font-semibold text-[#008069]">{ len(threads) }</span>
+						</header>
+						<label class="mx-5 mb-3 flex items-center gap-2.5 rounded-md bg-[#f5f7f6] px-3 py-2 text-[#728078]">
+							<svg class="h-[17px] w-[17px] shrink-0" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>
+							<input type="search" x-model="q" placeholder={ page.T("inbox.search") } aria-label={ page.T("inbox.search") }
+								class="w-full min-w-0 bg-transparent text-xs text-[#202c33] outline-none placeholder:text-[#728078]" />
+						</label>
+						<div class="flex gap-2 border-b border-[#e8eeeb] px-5 pb-3">
+							<button type="button" class="rounded-full px-3.5 py-1.5 text-xs font-medium transition"
+								:class="filter === 'all' ? 'bg-[#e5f3ec] text-[#008069]' : 'bg-[#f5f7f6] text-[#728078] hover:text-[#202c33]'" @click="filter='all'">{ page.T("inbox.filterAll") }</button>
+							<button type="button" class="rounded-full px-3.5 py-1.5 text-xs font-medium transition"
+								:class="filter === 'unread' ? 'bg-[#e5f3ec] text-[#008069]' : 'bg-[#f5f7f6] text-[#728078] hover:text-[#202c33]'" @click="filter='unread'">{ page.T("inbox.filterUnread") }</button>
+						</div>
+						@ChatSidebar(page.I18N, threads, activeID(active), false)
+					</div>
+
+					<div id="inbox-thread-pane" :class="showDetail ? 'flex' : 'hidden md:flex'" class="min-h-0 flex-1 flex-col bg-[#efece5]">
+						if active != nil {
+							@ThreadCard(page, active.Conv, active.Msgs, active.Err, active.Ok)
+						} else {
+							<div class="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center">
+								<div class="text-sm font-semibold text-[#202c33]">{ page.T("inbox.selectTitle") }</div>
+								<div class="mt-1 text-sm text-[#667781]">{ page.T("inbox.selectBody") }</div>
+							</div>
+						}
+					</div>
+				</div>
+			}
+		</div>
+	}
+}
+
+// ChatSidebar is the conversation list. It carries its own polling trigger so
+// a full-page render and each swap keep refreshing without a wrapper target.
+// When oob is true the whole sidebar is emitted as an out-of-band swap, which
+// is how a thread open keeps the list ordered and badges fresh in one request.
+templ ChatSidebar(dict *i18n.Dict, threads []whatsapp.Conversation, activeID uuid.UUID, oob bool) {
+	if oob {
+		<div id="inbox-sidebar" hx-get="/inbox/sidebar" hx-trigger="every 20s" hx-swap="outerHTML" hx-swap-oob="outerHTML" class="min-h-0 flex-1 divide-y divide-slate-100 overflow-y-auto">
+			@chatSidebarRows(dict, threads, activeID)
+		</div>
+	} else {
+		<div id="inbox-sidebar" hx-get="/inbox/sidebar" hx-trigger="every 20s" hx-swap="outerHTML" class="min-h-0 flex-1 divide-y divide-slate-100 overflow-y-auto">
+			@chatSidebarRows(dict, threads, activeID)
+		</div>
+	}
+}
+
+// InboxSidebar is the polling response: the sidebar plus the nav badge update.
+templ InboxSidebar(dict *i18n.Dict, threads []whatsapp.Conversation, activeID uuid.UUID) {
+	@ChatSidebar(dict, threads, activeID, false)
+	@NavBadgeOOB(totalUnread(threads))
+}
+
+// InboxThreadSwap is the htmx response for opening a thread: the thread card
+// plus out-of-band updates to the sidebar and the nav badge.
+templ InboxThreadSwap(page components.Page, conv whatsapp.Conversation, msgs []whatsapp.ChatMessage, err string, ok string, threads []whatsapp.Conversation, activeID uuid.UUID) {
+	@ThreadCard(page, conv, msgs, err, ok)
+	@ChatSidebar(page.I18N, threads, activeID, true)
+	@NavBadgeOOB(totalUnread(threads))
+}
+
+// NavBadgeOOB rewrites the Inbox item's unread badge after an inbox request.
+templ NavBadgeOOB(count int) {
+	if count > 0 {
+		<span id="inbox-nav-badge" hx-swap-oob="outerHTML" class="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-indigo-500 px-1.5 text-[10px] font-bold text-white">{ unreadLabel(count) }</span>
+	} else {
+		<span id="inbox-nav-badge" hx-swap-oob="outerHTML" class="hidden"></span>
+	}
+}
+
+templ chatSidebarRows(dict *i18n.Dict, threads []whatsapp.Conversation, activeID uuid.UUID) {
+	if len(threads) == 0 {
+		<p class="px-4 py-6 text-center text-sm text-[#728078]">{ dict.T("inbox.noConvosPopup") }</p>
+	} else {
+		for _, t := range threads {
+			<a href={ templ.SafeURL("/inbox/" + t.ID.String()) } hx-get={ templ.SafeURL("/inbox/" + t.ID.String()) } hx-target="#inbox-thread-pane" hx-swap="innerHTML" hx-push-url="true"
+				data-q-unread={ fmt.Sprintf("%d", t.UnreadCount) }
+				data-q-name={ strings.ToLower(conversationName(t) + " " + t.CustomerPhone) }
+				x-show="(filter === 'all' || $el.dataset.qUnread !== '0') && (q === '' || ($el.dataset.qName || '').includes(q.toLowerCase()))"
+				class={ "flex w-full items-center gap-3 border-b border-[#e8eeeb] px-5 py-[17px] text-left transition hover:bg-[#f5f7f6] focus:outline-none", templ.KV("bg-[#e5f3ec]", t.ID == activeID) }>
+				<span class={ "flex h-[43px] w-[43px] shrink-0 items-center justify-center rounded-full text-[13px] font-semibold", avatarTone(conversationName(t)) }>{ avatarLetters(conversationName(t)) }</span>
+				<span class="min-w-0 flex-1">
+					<span class="flex items-center justify-between gap-2">
+						<span class="truncate text-sm font-semibold text-[#202c33]">{ conversationName(t) }</span>
+						<time class="shrink-0 text-[10px] whitespace-nowrap text-[#728078]">{ chatClock(t.LastMessageAt) }</time>
+					</span>
+					<span class="mt-[5px] flex items-center justify-between gap-2">
+						<span class="min-w-0 flex-1 truncate text-xs text-[#728078]">
+							<span class="text-[#667781]">{ phoneDisplay(t.CustomerPhone) }</span>
+							if t.LastBody != "" {
+								<span class="mx-1 text-[#bcc6c2]">·</span>
+								<span>{ t.LastBody }</span>
+							}
+						</span>
+						if t.UnreadCount > 0 {
+							<span class="grid h-[18px] min-w-[18px] shrink-0 place-items-center rounded-full bg-[#008069] px-1.5 text-[10px] font-medium text-white">{ unreadLabel(t.UnreadCount) }</span>
+						}
+					</span>
+				</span>
+			</a>
+		}
+	}
+}
+
+// threadEmoji is the picker grid shown above the composer.
+var threadEmoji = []string{
+	"😀", "😄", "😂", "🤣", "😊", "😍", "🥰", "😘",
+	"😉", "😎", "🤩", "🥳", "😜", "🙃", "🤗", "😴",
+	"🤔", "🤯", "😭", "🙄", "👍", "👎", "👏", "🙌",
+	"🙏", "💪", "🤝", "👋", "❤️", "🧡", "💛", "💚",
+	"💙", "💜", "🤍", "🖤", "✨", "🔥", "💯", "🎉",
+	"🎊", "🎁", "🛒", "📦", "🚚", "🚀", "📞", "💬",
+	"⏰", "✅", "❌", "❗",
+}
+
+// avatarTone cycles a soft background/text palette for the initials circles,
+// exactly like the WhatsApp mock's per-contact avatars.
+func avatarTone(name string) string {
+	tones := [...]string{
+		"bg-[#e5f3ec] text-[#008069]",
+		"bg-[#f9e8ee] text-[#a85473]",
+		"bg-[#e7eef9] text-[#5376a8]",
+		"bg-[#f8efd9] text-[#98742b]",
+	}
+	h := fnv.New32a()
+	h.Write([]byte(name))
+	return tones[h.Sum32()%uint32(len(tones))]
+}
+
+// avatarLetters derives a short initial badge for the messenger-style list.
+func avatarLetters(name string) string {
+	fields := strings.Fields(name)
+	var b strings.Builder
+	for _, f := range fields {
+		if f != "" {
+			b.WriteRune(rune(f[0]))
+		}
+		if b.Len() >= 2 {
+			break
+		}
+	}
+	out := strings.ToUpper(b.String())
+	if out == "" {
+		return "#"
+	}
+	return out
+}
+
+// whatsappBadge is the familiar green WhatsApp glyph used on conversation rows
+// and the thread header, exactly like the shop chat.
+templ whatsappBadge(size string) {
+	<span class={ "inline-flex shrink-0 items-center justify-center rounded-full bg-[#25D366] text-white", size }>
+		<svg class="h-3 w-3" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.52.149-.174.198-.298.297-.497.1-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
+	</span>
+}
+
+// ThreadCard is the whole open conversation: header, message bubbles (which
+// poll for new inbound on their own) and the reply box. The card is the htmx
+// swap target after a reply, so the outgoing bubble and the cleared textarea
+// land in one exchange. x-init flips the mobile sidebar/detail toggle so
+// opening a thread shows the detail area on small screens.
+templ ThreadCard(page components.Page, conv whatsapp.Conversation, msgs []whatsapp.ChatMessage, err string, ok string) {
+	<div id="thread-card" class="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#efece5]" x-init="showDetail = true">
+		<div class="flex items-center justify-between gap-3 border-b border-[#e8eeeb] bg-white px-4 py-[15px] sm:px-6">
+			<div class="flex min-w-0 items-center gap-3">
+				<button type="button" class="-ml-1 rounded-md p-1 text-[#667781] hover:text-[#202c33] md:hidden" @click="showDetail = false" aria-label={ page.T("inbox.back") }>
+					<svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" /></svg>
+				</button>
+				<span class={ "flex h-[43px] w-[43px] shrink-0 items-center justify-center rounded-full text-[13px] font-semibold", avatarTone(conversationName(conv)) }>{ avatarLetters(conversationName(conv)) }</span>
+				<span class="min-w-0">
+					<span class="inline-flex items-center gap-1.5">
+						<span class="truncate text-[15px] font-semibold text-[#202c33]">{ conversationName(conv) }</span>
+						@whatsappBadge("h-4 w-4")
+					</span>
+					<div class="mt-0.5 truncate text-[11px] text-[#667781]">{ phoneDisplay(conv.CustomerPhone) }
+						if conv.WindowOpen {
+							<span class="ml-1 text-[#008069]">· { page.T("inbox.windowOpen") }</span>
+						}
+					</div>
+				</span>
+			</div>
+			if !conv.WindowOpen {
+				<span class="shrink-0 rounded-full bg-[#fef1f1] px-2.5 py-1 text-[10px] font-medium text-[#b3423a]">{ page.T("inbox.windowClosed") }</span>
+			}
+		</div>
+
+		<div id="thread-bubbles" class="min-h-0 flex-1 overflow-y-auto bg-[#efece5] px-4 py-4 scroll-smooth sm:px-6"
+			style="overflow-anchor: none;"
+			hx-get={ templ.SafeURL("/inbox/" + conv.ID.String() + "/fragment") }
+			hx-trigger="every 15s" hx-swap="innerHTML"
+			x-init="$nextTick(() => $el.scrollTop = $el.scrollHeight)"
+			hx-on::after-swap="const el=this; if (el.scrollTop + el.clientHeight >= el.scrollHeight - 260) { el.scrollTop = el.scrollHeight; }">
+			@BubblesList(page.I18N, conv.ID, msgs)
+		</div>
+
+		<div id="thread-typing" class="h-5 border-t border-[#e8eeeb] bg-[#efece5] px-4 text-[10px] italic text-[#728078]"></div>
+
+		if err != "" {
+			<div class="border-t border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{ err }</div>
+		}
+		if ok != "" {
+			<div class="border-t border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{ ok }</div>
+		}
+
+		if conv.WindowOpen {
+			<div class="border-t border-[#e8eeeb] bg-[#f5f7f6] px-3 py-3 sm:px-4">
+				<p class="px-1 pb-1 text-[10px] text-amber-600">{ page.T("inbox.replyHint") }</p>
+				<div class="relative" x-data="{ open: false }">
+					<div x-show="open" x-transition.opacity @click.outside="open = false"
+						class="absolute inset-x-0 bottom-full z-20 mb-2 rounded-md border border-[#e8eeeb] bg-white p-3 shadow-lg">
+						<div class="grid grid-cols-8 gap-0.5">
+							for _, e := range threadEmoji {
+								<button type="button"
+									class="grid h-8 w-8 place-items-center rounded-md text-[19px] leading-none transition hover:bg-[#f5f7f6]"
+									aria-label={ page.Tf("inbox.emojiLabel", e) }
+									@click="const m=document.getElementById('composer-input'); if(m){m.value+=( $el.textContent||'').trim(); m.focus(); m.dispatchEvent(new Event('input',{bubbles:true}))}">{ e }</button>
+							}
+						</div>
+					</div>
+					<div x-data={ templ.SafeURL("voiceComposer('" + conv.ID.String() + "')") } x-init="init()" class="w-full">
+						<p x-show="errors" x-text="errors" class="px-1 pb-1 text-xs text-rose-600"></p>
+						<div class="flex items-center gap-2" x-show="state === 'recording'" x-cloak>
+							<span class="flex h-[44px] items-center gap-2 rounded-[6px] border border-[#e8eeeb] bg-white px-3">
+								<span class="h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-rose-500"></span>
+								<span class="text-sm text-[#202c33]">{ page.T("inbox.recording") }</span>
+								<span class="text-sm tabular-nums text-[#667781]" x-text="fmt()"></span>
+							</span>
+							<span class="min-w-0 flex-1 text-[10px] text-[#728078]">{ page.T("inbox.replyHint") }</span>
+							<button type="button" aria-label={ page.T("inbox.stopRecording") } title={ page.T("inbox.stopRecording") }
+								class="grid h-[44px] w-[44px] shrink-0 place-items-center rounded-[6px] bg-rose-600 text-white transition hover:bg-rose-700" @click="stop()">
+								<span class="block h-3.5 w-3.5 rounded-[2px] bg-white"></span>
+							</button>
+						</div>
+						<div class="flex items-center gap-2" x-show="state === 'ready'" x-cloak>
+							<audio controls preload="metadata" x-show="!isImage" :src="url" class="h-9 min-w-0 flex-1 max-w-full"></audio>
+							<img x-show="isImage" :src="url" class="block max-h-72 max-w-[240px] rounded-md object-cover" alt={ page.T("inbox.attachPreview") } />
+							<span class="shrink-0 text-sm tabular-nums text-[#667781]" x-show="!isImage" x-text="fmt()"></span>
+							<button type="button" aria-label={ page.T("inbox.cancelAudio") } title={ page.T("inbox.discard") }
+								class="grid h-[44px] w-[44px] shrink-0 place-items-center rounded-[6px] text-[#728078] transition hover:bg-[#e8eeeb] hover:text-[#202c33]" @click="cancel()">
+								<svg class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M18 6 6 18M6 6l12 12" /></svg>
+							</button>
+							<button type="button" aria-label={ page.T("inbox.sendAudio") } title={ page.T("inbox.sendVoice") }
+								:disabled="sending"
+								class="grid h-[44px] w-[44px] shrink-0 place-items-center rounded-[6px] bg-[#008069] text-white transition hover:bg-[#00705d] disabled:cursor-wait disabled:opacity-60" @click="send()">
+								<svg x-show="!sending" class="h-[20px] w-[20px]" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><path d="m3 3 19 9-19 9 4-9-4-9ZM7 12h15"/></svg>
+								<svg x-show="sending" x-cloak class="h-[18px] w-[18px] animate-spin" viewBox="0 0 24 24" fill="none">
+									<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+									<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4z" />
+								</svg>
+							</button>
+						</div>
+						<form class="flex items-center gap-2" x-show="state === 'idle'"
+							hx-post={ templ.SafeURL("/inbox/" + conv.ID.String() + "/reply") }
+							hx-target="this" hx-swap="none">
+							<button type="button" :title={ "open ? '" + page.T("inbox.closeEmoji") + "' : '" + page.T("inbox.emoji") + "'" } aria-label="Emoji"
+								class="composer-ctl grid h-[44px] w-[44px] shrink-0 place-items-center rounded-[6px] text-[#728078] transition hover:bg-[#e5f3ec] hover:text-[#008069] disabled:cursor-not-allowed disabled:opacity-40"
+								:class="open ? 'bg-[#e5f3ec] text-[#008069]' : ''" @click="open = !open">
+								<svg class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" stroke-linejoin="round" d="M8.8 14.2a4.4 4.4 0 0 0 6.4 0"/><path stroke-linecap="round" d="M9.2 9.6h.01M14.8 9.6h.01"/></svg>
+							</button>
+							<button type="button" aria-label={ page.T("inbox.attach") } title={ page.T("inbox.attachTitle") }
+								class="composer-ctl grid h-[44px] w-[44px] shrink-0 place-items-center rounded-[6px] text-[#728078] transition hover:bg-[#e5f3ec] hover:text-[#008069] disabled:cursor-not-allowed disabled:opacity-40"
+								@click="$refs.audioFile.click()">
+								<svg class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19a3 3 0 0 0 6 0V6a2 2 0 0 0-4 0v12a.5.5 0 0 0 1 0V6"/><path stroke-linecap="round" stroke-linejoin="round" d="M9 8H4a2 2 0 0 0 0 4h5"/></svg>
+							</button>
+							<input type="file" x-ref="audioFile" accept={ "image/jpeg,image/png,image/webp,audio/mpeg,audio/mp4,audio/ogg,audio/aac,audio/amr,.jpg,.png,.webp,.mp3,.m4a,.ogg,.aac,.amr" } class="hidden" @change="loadFile($el); $el.value=''" />
+							<textarea id="composer-input" name="body" rows="1" required maxlength="2000" placeholder={ page.T("inbox.typeMessage") } aria-label={ page.T("inbox.message") } x-ref="msg"
+								class="composer-ctl h-[44px] min-w-0 flex-1 resize-none rounded-[6px] border border-[#e8eeeb] bg-white px-3 py-2.5 text-sm text-[#202c33] outline-none focus:border-[#008069] disabled:cursor-not-allowed disabled:bg-slate-50"></textarea>
+							<button type="button" aria-label={ page.T("inbox.recordVoice") } title={ page.T("inbox.recordVoiceTitle") }
+								:disabled="!canRecord"
+								class="composer-ctl grid h-[44px] w-[44px] shrink-0 place-items-center rounded-[6px] text-[#728078] transition hover:bg-[#e5f3ec] hover:text-[#008069] disabled:cursor-not-allowed disabled:opacity-40"
+								@click="start()">
+								<svg class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><path stroke-linecap="round" d="M12 17v5"/></svg>
+							</button>
+							<button id="composer-send-btn" type="submit" aria-label={ page.T("inbox.sendMessage") } title={ page.T("inbox.sendMessage") }
+								class="composer-ctl grid h-[44px] w-[44px] shrink-0 place-items-center rounded-[6px] bg-[#008069] text-white transition hover:bg-[#00705d] disabled:cursor-wait disabled:opacity-60">
+								<svg id="composer-arrow" class="h-[20px] w-[20px]" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24"><path d="m3 3 19 9-19 9 4-9-4-9ZM7 12h15"/></svg>
+								<svg id="composer-spinner" style="display:none" class="h-[18px] w-[18px] animate-spin" viewBox="0 0 24 24" fill="none">
+									<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+									<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4z" />
+								</svg>
+							</button>
+						</form>
+					</div>
+				</div>
+			</div>
+		} else {
+			<div class="flex items-center gap-2 border-t border-[#e8eeeb] bg-[#f5f7f6] px-4 py-3">
+				<span class="text-sm text-[#667781]">{ page.T("inbox.windowClosedBody") }</span>
+				<a href="/templates" class="shrink-0 text-sm font-medium text-[#008069] hover:underline">{ page.T("inbox.useTemplate") }</a>
+			</div>
+		}
+	</div>
+}
+
+// BubblesList is the message area of a thread. It is rendered standalone so the
+// thread fragment can re-render just the bubbles on the poll.
+templ BubblesList(dict *i18n.Dict, convID uuid.UUID, msgs []whatsapp.ChatMessage) {
+	if len(msgs) == 0 {
+		<div class="px-4 py-2 text-center text-sm text-[#728078]">{ dict.T("inbox.noMsgs") }</div>
+	} else {
+		<div class="mx-auto mb-2 w-fit rounded-md bg-white px-3 py-1 text-[10px] text-[#667781] shadow-sm">{ dayLabel(dict, msgs[len(msgs)-1].CreatedAt) }</div>
+		<p class="mx-auto mb-4 max-w-[420px] text-center text-[11px] text-[#667781]">{ dict.T("inbox.secureNote") }</p>
+		<div class="flex flex-col gap-2.5">
+			for _, m := range msgs {
+				@bubbleRow(dict, convID, m)
+			}
+		</div>
+	}
+}
+
+// bubbleRow is a single message bubble: an inbound or outbound wrapper with the
+// message id and delivery status exposed for the send-spinner tracker.
+templ bubbleRow(dict *i18n.Dict, convID uuid.UUID, m whatsapp.ChatMessage) {
+	if m.Direction == "inbound" {
+		<div class="flex" data-direction="inbound" data-msg-id={ m.ID.String() } data-status={ m.Status }>
+			<div class="max-w-[78%] rounded-[0_7px_7px_7px] bg-white px-3 py-2 shadow-sm">
+				@messageContent(convID, dict, m)
+			</div>
+		</div>
+	} else {
+		<div class="flex justify-end" data-direction="outbound" data-msg-id={ m.ID.String() } data-status={ m.Status }>
+			<div class="max-w-[78%] rounded-[7px_0_7px_7px] bg-[#d9fdd3] px-3 py-2 shadow-sm">
+				@messageContent(convID, dict, m)
+			</div>
+		</div>
+	}
+}
+
+// OOBNewBubble is the AJAX-only fragment the reply endpoints return: htmx moves
+// it into #thread-bubbles (beforeend) so the chat slides up instead of the
+// whole thread card rebuilding from the top.
+templ OOBNewBubble(dict *i18n.Dict, convID uuid.UUID, m whatsapp.ChatMessage) {
+	<div id={ "msg-" + m.ID.String() } hx-swap-oob="beforeend:#thread-bubbles">
+		@bubbleRow(dict, convID, m)
+	</div>
+}
+
+// messageContent is the inside of one bubble: a playable voice note when the
+// message carries media, otherwise the text body with its little time/meta row.
+templ messageContent(convID uuid.UUID, dict *i18n.Dict, m whatsapp.ChatMessage) {
+	if m.MediaKind == "audio" && len(m.MediaBytes) > 0 {
+		<audio controls preload="metadata" class="h-10 w-56 max-w-full" aria-label={ dict.T("inbox.voiceNote") }
+			src={ templ.SafeURL("/inbox/" + convID.String() + "/media/" + m.ID.String()) }></audio>
+		<div class="mt-1 flex items-center justify-between gap-2">
+			<span class="text-[10px] text-[#667781]">🎤 { dict.T("inbox.voiceNote") }{ voiceDurationSuffix(m.MediaDurationMS) }</span>
+			<span class="text-[10px] text-[#728078]">{ chatClock(m.CreatedAt) }</span>
+		</div>
+	} else if m.MediaKind == "image" && len(m.MediaBytes) > 0 {
+		<img class="block max-h-72 max-w-[240px] rounded-md object-cover" alt={ dict.T("inbox.image") }
+			src={ templ.SafeURL("/inbox/" + convID.String() + "/media/" + m.ID.String()) } />
+		<div class="mt-1 flex items-center justify-between gap-2">
+			<span class="break-words text-[10px] text-[#667781]">{ imageMetaLabel(dict, m) }</span>
+			<span class="text-[10px] text-[#728078]">{ chatClock(m.CreatedAt) }</span>
+		</div>
+	} else if m.MediaKind == "image" {
+		<p class="whitespace-pre-wrap break-words text-sm text-[#202c33]">{ m.Body }</p>
+		<div class="mt-1 flex items-center justify-between gap-2">
+			<span class="text-[10px] text-[#728078]">{ dict.T("inbox.photoRemoved") }</span>
+			<span class="text-[10px] text-[#728078]">{ chatClock(m.CreatedAt) }</span>
+		</div>
+	} else if m.MediaKind == "audio" {
+		<p class="whitespace-pre-wrap break-words text-sm text-[#202c33]">{ m.Body }</p>
+		<div class="mt-1 flex items-center justify-between gap-2">
+			<span class="text-[10px] text-[#728078]">{ dict.T("inbox.voiceRemoved") }</span>
+			<span class="text-[10px] text-[#728078]">{ chatClock(m.CreatedAt) }</span>
+		</div>
+	} else {
+		<p class="whitespace-pre-wrap break-words text-sm text-[#202c33]">{ m.Body }</p>
+		<div class="mt-0.5 flex items-center justify-end gap-1.5 text-[10px] text-[#728078]">
+			<span>{ chatClock(m.CreatedAt) }</span>
+			if m.Direction != "inbound" && chatStatusLabel(dict, m.Status) != "" {
+				<span class="text-[#008069]">{ chatStatusLabel(dict, m.Status) }</span>
+			}
+		</div>
+	}
+}
+
+// voiceDurationSuffix renders " · 0:42" next to the voice-note label.
+func voiceDurationSuffix(ms int) string {
+	s := ms / 1000
+	return " · " + fmt.Sprintf("%d:%02d", s/60, s%60)
+}
+
+// imageMetaLabel shows the caption for an inbound image when present.
+func imageMetaLabel(dict *i18n.Dict, m whatsapp.ChatMessage) string {
+	s := strings.TrimSpace(m.Body)
+	if s == "" || s == "🖼️ Image" {
+		return "🖼️ " + dict.T("inbox.photo")
+	}
+	return "🖼️ " + s
+}
+
+// dayLabel renders a compact date pill above the conversation, TODAY or
+// YESTERDAY for recent messages, otherwise the full date.
+func dayLabel(dict *i18n.Dict, t time.Time) string {
+	now := time.Now()
+	ty, tm, td := t.Local().Date()
+	ny, nm, nd := now.Date()
+	if ty == ny && tm == nm && td == nd {
+		return dict.T("inbox.today")
+	}
+	if t.Local().Add(24 * time.Hour).Year() == ny && t.Local().Add(24*time.Hour).Month() == nm && t.Local().Add(24*time.Hour).Day() == nd {
+		return dict.T("inbox.yesterday")
+	}
+	return t.Local().Format("02 Jan 2006")
+}

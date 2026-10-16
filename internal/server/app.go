@@ -129,6 +129,22 @@ func (a *App) InitializeRoutes(r *chi.Mux) {
 		pr.Post("/admin/whatsapp", kit.Handler(a.handleAdminWhatsappConfigSave))
 		pr.Post("/admin/whatsapp/verify", kit.Handler(a.handleAdminWhatsappVerify))
 
+		// Platform inbox (admin-only): customers messaging the central
+		// WhatsApp number land here.
+		pr.Group(func(ir chi.Router) {
+			ir.Use(a.requireAdminMiddleware)
+
+			ir.Get("/inbox", kit.Handler(a.handleInbox))
+			ir.Get("/inbox/sidebar", kit.Handler(a.handleInboxSidebar))
+			ir.Get("/inbox/{id}", kit.Handler(a.handleInboxThread))
+			ir.Get("/inbox/{id}/fragment", kit.Handler(a.handleInboxFragment))
+			ir.Get("/inbox/{id}/media/{msg}", kit.Handler(a.handleChatMedia))
+			ir.Post("/inbox/{id}/reply", kit.Handler(a.handleInboxReply))
+			ir.Post("/inbox/{id}/reply-audio", kit.Handler(a.handleInboxReplyAudio))
+			ir.Post("/inbox/{id}/reply-image", kit.Handler(a.handleInboxReplyImage))
+			ir.Post("/inbox/{id}/read", kit.Handler(a.handleInboxRead))
+		})
+
 		// Merchant (shop-scoped) area. Admins are redirected to the console.
 		pr.Group(func(cr chi.Router) {
 			cr.Use(a.clientOnlyMiddleware)

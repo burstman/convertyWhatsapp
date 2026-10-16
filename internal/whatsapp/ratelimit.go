@@ -154,6 +154,37 @@ func (l *RateLimiter) Allow(ctx context.Context, shopID uuid.UUID) error {
 	return nil
 }
 
+// AllowPlatform counts one platform-only send against the shared global
+// window. Admin-inbox replies have no owning shop, so they consume only the
+// platform budget, not a per-shop one.
+func (l *RateLimiter) AllowPlatform(ctx context.Context) error {
+	if l.db == nil {
+		return nil
+	}
+
+	const globalScope = "global"
+
+	var counted bool
+	err := l.db.QueryRow(ctx, `
+		INSERT INTO send_rate_windows (scope, window_start, count)
+		VALUES ($1::text, $2::timestamptz, 1)
+		ON CONFLICT (scope, window_start) DO UPDATE
+			SET count = send_rate_windows.count + 1
+			WHERE send_rate_windows.count < $3::int
+		RETURNING 1`,
+		globalScope, l.windowStart(time.Now()), l.global).
+		Scan(&counted)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return &RateLimitExceeded{PerShop: false}
+		}
+		return err
+	}
+
+	l.prune(ctx)
+	return nil
+}
+
 // AllowTestSend counts one test send against a budget scoped to a single actor
 // within a single shop. It is intentionally independent of Allow's customer-send
 // windows: a test send can neither be charged to customer traffic nor hide in the

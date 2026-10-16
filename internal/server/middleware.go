@@ -26,7 +26,18 @@ const (
 	// Converty), whose JSON payloads are legitimately larger than dashboard
 	// forms.
 	webhookBodyLimitBytes int64 = 2 << 20 // 2 MiB
+	// mediaBodyLimitBytes caps multipart inbox uploads (voice notes up to 16 MB,
+	// images up to 5 MB). The inbox handlers enforce the per-kind ceiling from
+	// this outer bound on the bytes actually read.
+	mediaBodyLimitBytes int64 = 20 << 20 // 20 MiB
 )
+
+// isInboxMediaPath reports whether a path is one of the inbox multipart upload
+// endpoints (voice/image), which need the larger media body limit.
+func isInboxMediaPath(path string) bool {
+	return strings.HasPrefix(path, "/inbox/") &&
+		(strings.HasSuffix(path, "/reply-audio") || strings.HasSuffix(path, "/reply-image"))
+}
 
 // webhookPaths receive webhookBodyLimitBytes instead of formBodyLimitBytes.
 var webhookPaths = map[string]bool{
@@ -42,6 +53,8 @@ func (a *App) bodyLimitMiddleware(next http.Handler) http.Handler {
 		limit := formBodyLimitBytes
 		if webhookPaths[r.URL.Path] {
 			limit = webhookBodyLimitBytes
+		} else if isInboxMediaPath(r.URL.Path) {
+			limit = mediaBodyLimitBytes
 		}
 		enforceBodyLimit(limit, next).ServeHTTP(w, r)
 	})
@@ -140,6 +153,19 @@ func (a *App) clientOnlyMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if principal, ok := r.Context().Value(kit.AuthKey{}).(auth.Auth); ok && principal.IsAdmin() {
 			http.Redirect(w, r, "/admin", http.StatusSeeOther)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// requireAdminMiddleware gates the platform inbox to admins only. It runs after
+// kit.WithAuthentication, so the principal is always present; a non-admin is
+// sent back to the merchant dashboard.
+func (a *App) requireAdminMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if principal, ok := r.Context().Value(kit.AuthKey{}).(auth.Auth); !ok || !principal.IsAdmin() {
+			http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 			return
 		}
 		next.ServeHTTP(w, r)
