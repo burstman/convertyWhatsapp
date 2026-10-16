@@ -33,6 +33,11 @@ WORKDIR /app
 COPY --from=build /out/api ./bin/api
 COPY --from=build /out/migrate ./bin/migrate
 
+# The app writes a ".env" placeholder into its working directory at startup
+# (superkit's kit.Setup requires the file on disk), so the runtime user must own
+# the working directory.
+RUN chown -R app:app /app
+
 USER app
 
 # Render injects PORT; config.Load() reads it.
