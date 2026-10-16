@@ -17,6 +17,9 @@ type WhatsappForm struct {
 	SystemUserTokenSet  bool
 	WebhookTokenSet     bool
 	AppSecretSet        bool
+	LastVerifiedAt      string
+	LastVerifiedStatus  string
+	LastVerifiedDetails string
 	NoticeKind          string
 	NoticeText          string
 }
@@ -71,6 +74,23 @@ templ WhatsappConfig(page components.Page, f WhatsappForm) {
 					</div>
 				</dl>
 			</div>
+
+			if f.LastVerifiedAt != "" || f.LastVerifiedStatus != "" || f.LastVerifiedDetails != "" {
+				<div class="mb-6 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
+					<div class="flex items-center justify-between">
+						<h3 class="text-sm font-semibold text-slate-900">Last verification</h3>
+						if f.LastVerifiedStatus != "" {
+							<span class={ "inline-flex rounded-full px-2 py-0.5 text-xs font-medium ", lastVerifiedClass(f.LastVerifiedStatus) }>{ f.LastVerifiedStatus }</span>
+						}
+					</div>
+					if f.LastVerifiedAt != "" {
+						<p class="mt-1 text-xs text-slate-500">Checked { f.LastVerifiedAt }</p>
+					}
+					if f.LastVerifiedDetails != "" {
+						<p class="mt-2 text-sm text-slate-700">{ f.LastVerifiedDetails }</p>
+					}
+				</div>
+			}
 
 			<form method="post" action="/admin/whatsapp" class="rounded-lg border border-slate-200 bg-white shadow-sm">
 				<div class="border-b border-slate-100 px-6 py-4">
@@ -188,6 +208,15 @@ func statusText(ok bool) string {
 	return "Missing"
 }
 
+func noticeClass(kind string) string {
+	switch kind {
+	case "error":
+		return "border-rose-200 bg-rose-50 text-rose-800"
+	default:
+		return "border-emerald-200 bg-emerald-50 text-emerald-800"
+	}
+}
+
 func secretPlaceholder(configured bool) string {
 	if configured {
 		return "•••••••• configured"
@@ -195,11 +224,13 @@ func secretPlaceholder(configured bool) string {
 	return "not set"
 }
 
-func noticeClass(kind string) string {
-	switch kind {
-	case "error":
-		return "border-rose-200 bg-rose-50 text-rose-800"
+func lastVerifiedClass(status string) string {
+	switch status {
+	case "ok", "connected", "success":
+		return "bg-emerald-50 text-emerald-700"
+	case "error", "failed":
+		return "bg-rose-50 text-rose-800"
 	default:
-		return "border-emerald-200 bg-emerald-50 text-emerald-800"
+		return "bg-slate-100 text-slate-600"
 	}
 }

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
+	"context"
 
 	"github.com/anthdm/superkit/kit"
 
@@ -26,6 +28,15 @@ func adminConsolePage(principal auth.Auth, title, active string) viewshared.Page
 // store snapshot. Secrets are represented only by a "configured" flag.
 func (a *App) whatsappFormView(noticeKind, noticeText string) vadmin.WhatsappForm {
 	m := a.Meta.Get()
+	// Also pull last verification from app_settings (non-secret)
+	lastAt := ""
+	lastStatus := ""
+	lastDetails := ""
+	ctx := context.Background()
+	_ = a.Pool.QueryRow(ctx, `SELECT value FROM app_settings WHERE key='meta.last_verified_at'`).Scan(&lastAt)
+	_ = a.Pool.QueryRow(ctx, `SELECT value FROM app_settings WHERE key='meta.last_verified_status'`).Scan(&lastStatus)
+	_ = a.Pool.QueryRow(ctx, `SELECT value FROM app_settings WHERE key='meta.last_verified_details'`).Scan(&lastDetails)
+
 	return vadmin.WhatsappForm{
 		PhoneNumberID:       m.PhoneNumberID,
 		MessagingAccountID:  m.MessagingAccountID,
@@ -36,6 +47,9 @@ func (a *App) whatsappFormView(noticeKind, noticeText string) vadmin.WhatsappFor
 		SystemUserTokenSet:  m.SystemUserToken != "",
 		WebhookTokenSet:     m.WebhookVerifyToken != "",
 		AppSecretSet:        m.AppSecret != "",
+		LastVerifiedAt:      lastAt,
+		LastVerifiedStatus:  lastStatus,
+		LastVerifiedDetails: lastDetails,
 		NoticeKind:          noticeKind,
 		NoticeText:          noticeText,
 	}
@@ -122,9 +136,30 @@ func (a *App) handleAdminWhatsappVerify(k *kit.Kit) error {
 	if err != nil {
 		form.NoticeKind = "error"
 		form.NoticeText = "Verification failed: " + err.Error()
+		_, _ = a.Pool.Exec(k.Request.Context(), `
+			INSERT INTO app_settings (key, value, updated_at)
+			VALUES ('meta.last_verified_at', $1, now()),
+			       ('meta.last_verified_status', 'error', now()),
+			       ('meta.last_verified_details', $2, now())
+			ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+			time.Now().UTC().Format(time.RFC3339), form.NoticeText)
 	} else {
+		details := fmt.Sprintf("%s (%s), quality %s", pn.DisplayPhoneNumber, pn.VerifiedName, pn.QualityRating)
+		if pn.CodeVerificationStatus != "" {
+			details += fmt.Sprintf(", code %s", pn.CodeVerificationStatus)
+		}
+		if pn.NameStatus != "" {
+			details += fmt.Sprintf(", name %s", pn.NameStatus)
+		}
 		form.NoticeKind = "ok"
-		form.NoticeText = fmt.Sprintf("OK — %s (%s), quality %s", pn.DisplayPhoneNumber, pn.VerifiedName, pn.QualityRating)
+		form.NoticeText = "WhatsApp number connected — " + details
+		_, _ = a.Pool.Exec(k.Request.Context(), `
+			INSERT INTO app_settings (key, value, updated_at)
+			VALUES ('meta.last_verified_at', $1, now()),
+			       ('meta.last_verified_status', 'ok', now()),
+			       ('meta.last_verified_details', $2, now())
+			ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+			time.Now().UTC().Format(time.RFC3339), details)
 	}
 	return k.Render(vadmin.WhatsappConfig(adminConsolePage(principal, "WhatsApp credentials", "admin"), form))
 }

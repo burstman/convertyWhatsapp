@@ -25,6 +25,9 @@ type WhatsappForm struct {
 	SystemUserTokenSet  bool
 	WebhookTokenSet     bool
 	AppSecretSet        bool
+	LastVerifiedAt      string
+	LastVerifiedStatus  string
+	LastVerifiedDetails string
 	NoticeKind          string
 	NoticeText          string
 }
@@ -95,7 +98,7 @@ func WhatsappConfig(page components.Page, f WhatsappForm) templ.Component {
 				var templ_7745c5c3_Var5 string
 				templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(f.NoticeText)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 38, Col: 104}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 41, Col: 104}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 				if templ_7745c5c3_Err != nil {
@@ -113,7 +116,7 @@ func WhatsappConfig(page components.Page, f WhatsappForm) templ.Component {
 			var templ_7745c5c3_Var6 string
 			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(secretStatus(f.SystemUserTokenSet))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 49, Col: 94}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 52, Col: 94}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 			if templ_7745c5c3_Err != nil {
@@ -126,7 +129,7 @@ func WhatsappConfig(page components.Page, f WhatsappForm) templ.Component {
 			var templ_7745c5c3_Var7 string
 			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(statusText(f.PhoneNumberID != ""))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 53, Col: 93}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 56, Col: 93}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 			if templ_7745c5c3_Err != nil {
@@ -144,7 +147,7 @@ func WhatsappConfig(page components.Page, f WhatsappForm) templ.Component {
 				var templ_7745c5c3_Var8 string
 				templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(f.PhoneNumberID)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 55, Col: 59}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 58, Col: 59}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 				if templ_7745c5c3_Err != nil {
@@ -162,7 +165,7 @@ func WhatsappConfig(page components.Page, f WhatsappForm) templ.Component {
 			var templ_7745c5c3_Var9 string
 			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(statusText(f.MessagingAccountID != ""))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 60, Col: 98}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 63, Col: 98}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 			if templ_7745c5c3_Err != nil {
@@ -180,7 +183,7 @@ func WhatsappConfig(page components.Page, f WhatsappForm) templ.Component {
 				var templ_7745c5c3_Var10 string
 				templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(f.MessagingAccountID)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 62, Col: 64}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 65, Col: 64}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 				if templ_7745c5c3_Err != nil {
@@ -198,7 +201,7 @@ func WhatsappConfig(page components.Page, f WhatsappForm) templ.Component {
 			var templ_7745c5c3_Var11 string
 			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(statusText(f.PhoneNumber != ""))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 67, Col: 91}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 70, Col: 91}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 			if templ_7745c5c3_Err != nil {
@@ -216,7 +219,7 @@ func WhatsappConfig(page components.Page, f WhatsappForm) templ.Component {
 				var templ_7745c5c3_Var12 string
 				templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(f.PhoneNumber)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 69, Col: 57}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 72, Col: 57}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 				if templ_7745c5c3_Err != nil {
@@ -229,7 +232,7 @@ func WhatsappConfig(page components.Page, f WhatsappForm) templ.Component {
 				var templ_7745c5c3_Var13 string
 				templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(f.VerifiedName)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 69, Col: 77}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 72, Col: 77}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 				if templ_7745c5c3_Err != nil {
@@ -240,124 +243,217 @@ func WhatsappConfig(page components.Page, f WhatsappForm) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "</div></dl></div><form method=\"post\" action=\"/admin/whatsapp\" class=\"rounded-lg border border-slate-200 bg-white shadow-sm\"><div class=\"border-b border-slate-100 px-6 py-4\"><h3 class=\"text-sm font-semibold text-slate-900\">Meta Cloud API</h3><p class=\"text-xs text-slate-500\">Required for every send. Leave a secret blank to keep the current value.</p></div><div class=\"space-y-5 px-6 py-5\"><div><label for=\"system_user_token\" class=\"block text-sm font-medium text-slate-700\">System user access token</label> <input type=\"password\" id=\"system_user_token\" name=\"system_user_token\" autocomplete=\"off\" placeholder=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "</div></dl></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var14 string
-			templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.ResolveAttributeValue(secretPlaceholder(f.SystemUserTokenSet))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 85, Col: 60}
+			if f.LastVerifiedAt != "" || f.LastVerifiedStatus != "" || f.LastVerifiedDetails != "" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "<div class=\"mb-6 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm\"><div class=\"flex items-center justify-between\"><h3 class=\"text-sm font-semibold text-slate-900\">Last verification</h3>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if f.LastVerifiedStatus != "" {
+					var templ_7745c5c3_Var14 = []any{"inline-flex rounded-full px-2 py-0.5 text-xs font-medium ", lastVerifiedClass(f.LastVerifiedStatus)}
+					templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var14...)
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "<span class=\"")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var15 string
+					templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.CSSClasses(templ_7745c5c3_Var14).String())
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 1, Col: 0}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var15)
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var16 string
+					templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(f.LastVerifiedStatus)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 83, Col: 146}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "</span>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if f.LastVerifiedAt != "" {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "<p class=\"mt-1 text-xs text-slate-500\">Checked ")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var17 string
+					templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(f.LastVerifiedAt)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 87, Col: 71}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "</p>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				if f.LastVerifiedDetails != "" {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<p class=\"mt-2 text-sm text-slate-700\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var18 string
+					templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(f.LastVerifiedDetails)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 90, Col: 68}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "</p>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var14)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "\" class=\"mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500\"><p class=\"mt-1 text-xs text-slate-500\">Secret. Never expires for a system user.</p></div><div class=\"grid grid-cols-1 gap-5 sm:grid-cols-2\"><div><label for=\"phone_number_id\" class=\"block text-sm font-medium text-slate-700\">Phone number ID</label> <input type=\"text\" id=\"phone_number_id\" name=\"phone_number_id\" value=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var15 string
-			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.PhoneNumberID)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 93, Col: 93}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var15)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "\" class=\"mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500\"></div><div><label for=\"messaging_account_id\" class=\"block text-sm font-medium text-slate-700\">Messaging account ID</label> <input type=\"text\" id=\"messaging_account_id\" name=\"messaging_account_id\" value=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var16 string
-			templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.MessagingAccountID)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 98, Col: 108}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var16)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "\" class=\"mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500\"></div></div></div><div class=\"border-y border-slate-100 bg-slate-50 px-6 py-4\"><h3 class=\"text-sm font-semibold text-slate-900\">Business identity</h3><p class=\"text-xs text-slate-500\">Displayed to merchants and used when talking to the Graph API.</p></div><div class=\"space-y-5 px-6 py-5\"><div class=\"grid grid-cols-1 gap-5 sm:grid-cols-2\"><div><label for=\"waac_id\" class=\"block text-sm font-medium text-slate-700\">WAAC ID</label> <input type=\"text\" id=\"waac_id\" name=\"waac_id\" value=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var17 string
-			templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.WaacID)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 113, Col: 70}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var17)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "\" class=\"mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500\"></div><div><label for=\"business_portfolio_id\" class=\"block text-sm font-medium text-slate-700\">Business portfolio ID</label> <input type=\"text\" id=\"business_portfolio_id\" name=\"business_portfolio_id\" value=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var18 string
-			templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.BusinessPortfolioID)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 118, Col: 111}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var18)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "\" class=\"mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500\"></div></div><div class=\"grid grid-cols-1 gap-5 sm:grid-cols-2\"><div><label for=\"phone_number\" class=\"block text-sm font-medium text-slate-700\">Display phone number</label> <input type=\"text\" id=\"phone_number\" name=\"phone_number\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "<form method=\"post\" action=\"/admin/whatsapp\" class=\"rounded-lg border border-slate-200 bg-white shadow-sm\"><div class=\"border-b border-slate-100 px-6 py-4\"><h3 class=\"text-sm font-semibold text-slate-900\">Meta Cloud API</h3><p class=\"text-xs text-slate-500\">Required for every send. Leave a secret blank to keep the current value.</p></div><div class=\"space-y-5 px-6 py-5\"><div><label for=\"system_user_token\" class=\"block text-sm font-medium text-slate-700\">System user access token</label> <input type=\"password\" id=\"system_user_token\" name=\"system_user_token\" autocomplete=\"off\" placeholder=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var19 string
-			templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.PhoneNumber)
+			templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.ResolveAttributeValue(secretPlaceholder(f.SystemUserTokenSet))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 125, Col: 85}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 105, Col: 60}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var19)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "\" class=\"mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500\"></div><div><label for=\"verified_name\" class=\"block text-sm font-medium text-slate-700\">Verified name</label> <input type=\"text\" id=\"verified_name\" name=\"verified_name\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "\" class=\"mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500\"><p class=\"mt-1 text-xs text-slate-500\">Secret. Never expires for a system user.</p></div><div class=\"grid grid-cols-1 gap-5 sm:grid-cols-2\"><div><label for=\"phone_number_id\" class=\"block text-sm font-medium text-slate-700\">Phone number ID</label> <input type=\"text\" id=\"phone_number_id\" name=\"phone_number_id\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var20 string
-			templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.VerifiedName)
+			templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.PhoneNumberID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 130, Col: 88}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 113, Col: 93}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var20)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "\" class=\"mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500\"></div></div></div><div class=\"border-y border-slate-100 bg-slate-50 px-6 py-4\"><h3 class=\"text-sm font-semibold text-slate-900\">Webhooks</h3><p class=\"text-xs text-slate-500\">Used to verify Meta's subscription handshake and inbound status callbacks.</p></div><div class=\"space-y-5 px-6 py-5\"><div><label for=\"webhook_verify_token\" class=\"block text-sm font-medium text-slate-700\">Webhook verify token</label> <input type=\"password\" id=\"webhook_verify_token\" name=\"webhook_verify_token\" autocomplete=\"off\" placeholder=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "\" class=\"mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500\"></div><div><label for=\"messaging_account_id\" class=\"block text-sm font-medium text-slate-700\">Messaging account ID</label> <input type=\"text\" id=\"messaging_account_id\" name=\"messaging_account_id\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var21 string
-			templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.ResolveAttributeValue(secretPlaceholder(f.WebhookTokenSet))
+			templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.MessagingAccountID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 145, Col: 57}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 118, Col: 108}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var21)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "\" class=\"mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500\"><p class=\"mt-1 text-xs text-slate-500\">Secret. Must match the verify token configured in the Meta app.</p></div><div><label for=\"app_secret\" class=\"block text-sm font-medium text-slate-700\">App secret</label> <input type=\"password\" id=\"app_secret\" name=\"app_secret\" autocomplete=\"off\" placeholder=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "\" class=\"mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500\"></div></div></div><div class=\"border-y border-slate-100 bg-slate-50 px-6 py-4\"><h3 class=\"text-sm font-semibold text-slate-900\">Business identity</h3><p class=\"text-xs text-slate-500\">Displayed to merchants and used when talking to the Graph API.</p></div><div class=\"space-y-5 px-6 py-5\"><div class=\"grid grid-cols-1 gap-5 sm:grid-cols-2\"><div><label for=\"waac_id\" class=\"block text-sm font-medium text-slate-700\">WAAC ID</label> <input type=\"text\" id=\"waac_id\" name=\"waac_id\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var22 string
-			templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.ResolveAttributeValue(secretPlaceholder(f.AppSecretSet))
+			templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.WaacID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 152, Col: 54}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 133, Col: 70}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var22)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "\" class=\"mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500\"><p class=\"mt-1 text-xs text-slate-500\">Secret. Verifies the X-Hub-Signature-256 on every callback.</p></div></div><div class=\"flex items-center justify-end gap-3 border-t border-slate-100 px-6 py-4\"><button type=\"submit\" class=\"rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700\">Save credentials</button></div></form><form method=\"post\" action=\"/admin/whatsapp/verify\" class=\"mt-4 flex items-center gap-3\"><button type=\"submit\" class=\"rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50\">Test current credentials</button><p class=\"text-xs text-slate-500\">Resolves the phone number with the saved credentials.</p></form></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "\" class=\"mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500\"></div><div><label for=\"business_portfolio_id\" class=\"block text-sm font-medium text-slate-700\">Business portfolio ID</label> <input type=\"text\" id=\"business_portfolio_id\" name=\"business_portfolio_id\" value=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var23 string
+			templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.BusinessPortfolioID)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 138, Col: 111}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var23)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "\" class=\"mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500\"></div></div><div class=\"grid grid-cols-1 gap-5 sm:grid-cols-2\"><div><label for=\"phone_number\" class=\"block text-sm font-medium text-slate-700\">Display phone number</label> <input type=\"text\" id=\"phone_number\" name=\"phone_number\" value=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var24 string
+			templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.PhoneNumber)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 145, Col: 85}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var24)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "\" class=\"mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500\"></div><div><label for=\"verified_name\" class=\"block text-sm font-medium text-slate-700\">Verified name</label> <input type=\"text\" id=\"verified_name\" name=\"verified_name\" value=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var25 string
+			templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.VerifiedName)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 150, Col: 88}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var25)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "\" class=\"mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500\"></div></div></div><div class=\"border-y border-slate-100 bg-slate-50 px-6 py-4\"><h3 class=\"text-sm font-semibold text-slate-900\">Webhooks</h3><p class=\"text-xs text-slate-500\">Used to verify Meta's subscription handshake and inbound status callbacks.</p></div><div class=\"space-y-5 px-6 py-5\"><div><label for=\"webhook_verify_token\" class=\"block text-sm font-medium text-slate-700\">Webhook verify token</label> <input type=\"password\" id=\"webhook_verify_token\" name=\"webhook_verify_token\" autocomplete=\"off\" placeholder=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var26 string
+			templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.ResolveAttributeValue(secretPlaceholder(f.WebhookTokenSet))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 165, Col: 57}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var26)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "\" class=\"mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500\"><p class=\"mt-1 text-xs text-slate-500\">Secret. Must match the verify token configured in the Meta app.</p></div><div><label for=\"app_secret\" class=\"block text-sm font-medium text-slate-700\">App secret</label> <input type=\"password\" id=\"app_secret\" name=\"app_secret\" autocomplete=\"off\" placeholder=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var27 string
+			templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.ResolveAttributeValue(secretPlaceholder(f.AppSecretSet))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/admin/whatsapp.templ`, Line: 172, Col: 54}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var27)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "\" class=\"mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500\"><p class=\"mt-1 text-xs text-slate-500\">Secret. Verifies the X-Hub-Signature-256 on every callback.</p></div></div><div class=\"flex items-center justify-end gap-3 border-t border-slate-100 px-6 py-4\"><button type=\"submit\" class=\"rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700\">Save credentials</button></div></form><form method=\"post\" action=\"/admin/whatsapp/verify\" class=\"mt-4 flex items-center gap-3\"><button type=\"submit\" class=\"rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50\">Test current credentials</button><p class=\"text-xs text-slate-500\">Resolves the phone number with the saved credentials.</p></form></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -385,6 +481,15 @@ func statusText(ok bool) string {
 	return "Missing"
 }
 
+func noticeClass(kind string) string {
+	switch kind {
+	case "error":
+		return "border-rose-200 bg-rose-50 text-rose-800"
+	default:
+		return "border-emerald-200 bg-emerald-50 text-emerald-800"
+	}
+}
+
 func secretPlaceholder(configured bool) string {
 	if configured {
 		return "•••••••• configured"
@@ -392,12 +497,14 @@ func secretPlaceholder(configured bool) string {
 	return "not set"
 }
 
-func noticeClass(kind string) string {
-	switch kind {
-	case "error":
-		return "border-rose-200 bg-rose-50 text-rose-800"
+func lastVerifiedClass(status string) string {
+	switch status {
+	case "ok", "connected", "success":
+		return "bg-emerald-50 text-emerald-700"
+	case "error", "failed":
+		return "bg-rose-50 text-rose-800"
 	default:
-		return "border-emerald-200 bg-emerald-50 text-emerald-800"
+		return "bg-slate-100 text-slate-600"
 	}
 }
 
