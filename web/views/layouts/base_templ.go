@@ -126,7 +126,7 @@ func Shell(page components.Page) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, " · Converty WhatsApp</title><link rel=\"stylesheet\" href=\"/static/css/styles.css\"><script src=\"/static/js/htmx.min.js\" defer></script><script src=\"/static/js/alpine.min.js\" defer></script><script src=\"/static/js/csrf.js\" defer></script></head><body class=\"h-full bg-slate-100 text-slate-900 antialiased\"><div class=\"flex min-h-full\" x-data=\"{ sidebarOpen: false }\"><aside class=\"fixed inset-y-0 left-0 z-40 w-64 transform bg-slate-900 transition lg:static lg:translate-x-0\" :class=\"sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'\"><div class=\"flex h-16 items-center gap-2 border-b border-slate-800 px-6\"><span class=\"text-sm font-semibold text-white\">Converty</span> <span class=\"text-sm text-slate-400\">WhatsApp</span></div><nav class=\"space-y-1 p-4\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, " · Converty WhatsApp</title><link rel=\"preconnect\" href=\"https://fonts.googleapis.com\"><link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin><link href=\"https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700&family=Figtree:wght@400;500;600&display=swap\" rel=\"stylesheet\"><link rel=\"stylesheet\" href=\"/static/css/styles.css\"><script src=\"/static/js/htmx.min.js\" defer></script><script src=\"/static/js/alpine.min.js\" defer></script><script src=\"/static/js/csrf.js\" defer></script></head><body class=\"h-full bg-slate-100 text-slate-900 antialiased\"><div class=\"flex min-h-full\" x-data=\"{ sidebarOpen: false }\"><aside class=\"fixed inset-y-0 left-0 z-40 w-64 transform bg-slate-900 transition lg:static lg:translate-x-0\" :class=\"sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'\"><div class=\"flex h-16 items-center gap-2 border-b border-slate-800 px-6\"><span class=\"text-sm font-semibold text-white\">Converty</span> <span class=\"text-sm text-slate-400\">WhatsApp</span></div><nav class=\"space-y-1 p-4\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -206,7 +206,7 @@ func Shell(page components.Page) templ.Component {
 		var templ_7745c5c3_Var8 string
 		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(page.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/layouts/base.templ`, Line: 65, Col: 68}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/layouts/base.templ`, Line: 68, Col: 68}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 		if templ_7745c5c3_Err != nil {
@@ -219,7 +219,7 @@ func Shell(page components.Page) templ.Component {
 		var templ_7745c5c3_Var9 string
 		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(page.ShopName)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/layouts/base.templ`, Line: 68, Col: 75}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/layouts/base.templ`, Line: 71, Col: 75}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 		if templ_7745c5c3_Err != nil {
@@ -286,7 +286,7 @@ func AuthLayout(title string) templ.Component {
 		var templ_7745c5c3_Var11 string
 		templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/layouts/base.templ`, Line: 89, Col: 17}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/views/layouts/base.templ`, Line: 92, Col: 17}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 		if templ_7745c5c3_Err != nil {

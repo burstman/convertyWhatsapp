@@ -1,3 +1,53 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  :root {
+    --wa-primary: oklch(0.78 0.19 152);
+    --wa-success: oklch(0.78 0.19 152);
+    --wa-warning: oklch(0.82 0.16 85);
+    --wa-danger: oklch(0.66 0.21 25);
+    --wa-muted: oklch(0.25 0.015 175);
+    --wa-muted-fg: oklch(0.7 0.02 170);
+  }
+}
+
+@layer components {
+  .wa-badge {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    font-size: 0.75rem;
+    border-radius: 9999px;
+    line-height: 1.25rem;
+  }
+
+  .wa-badge-success {
+    background: color-mix(in oklab, var(--wa-success) 15%, transparent);
+    color: var(--wa-success);
+  }
+
+  .wa-badge-warning {
+    background: color-mix(in oklab, var(--wa-warning) 15%, transparent);
+    color: var(--wa-warning);
+  }
+
+  .wa-badge-danger {
+    background: color-mix(in oklab, var(--wa-danger) 15%, transparent);
+    color: var(--wa-danger);
+  }
+
+  .wa-badge-primary {
+    background: color-mix(in oklab, var(--wa-primary) 10%, transparent);
+    color: var(--wa-primary);
+  }
+
+  .wa-badge-muted {
+    background: var(--wa-muted);
+    color: var(--wa-muted-fg);
+  }
+
+  .wa-bar {
+    background: color-mix(in oklab, var(--wa-primary) 80%, transparent);
+  }
+}
