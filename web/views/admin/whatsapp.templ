@@ -38,6 +38,40 @@ templ WhatsappConfig(page components.Page, f WhatsappForm) {
 				<div class={ "mb-6 rounded-lg border px-4 py-3 text-sm ", noticeClass(f.NoticeKind) }>{ f.NoticeText }</div>
 			}
 
+			<div class="mb-6 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+				<div class="border-b border-slate-100 px-6 py-4">
+					<h3 class="text-sm font-semibold text-slate-900">Connection status</h3>
+					<p class="text-xs text-slate-500">Current saved configuration state (does not mean Meta is reachable until you test).</p>
+				</div>
+				<dl class="grid grid-cols-1 gap-4 px-6 py-4 sm:grid-cols-2">
+					<div>
+						<dt class="text-xs font-medium uppercase tracking-wide text-slate-400">System user token</dt>
+						<dd class="mt-1 text-sm font-medium text-slate-900">{ secretStatus(f.SystemUserTokenSet) }</dd>
+					</div>
+					<div>
+						<dt class="text-xs font-medium uppercase tracking-wide text-slate-400">Phone number ID</dt>
+						<dd class="mt-1 text-sm font-medium text-slate-900">{ statusText(f.PhoneNumberID != "") }</dd>
+						if f.PhoneNumberID != "" {
+							<dd class="text-xs text-slate-500">{ f.PhoneNumberID }</dd>
+						}
+					</div>
+					<div>
+						<dt class="text-xs font-medium uppercase tracking-wide text-slate-400">Messaging account ID</dt>
+						<dd class="mt-1 text-sm font-medium text-slate-900">{ statusText(f.MessagingAccountID != "") }</dd>
+						if f.MessagingAccountID != "" {
+							<dd class="text-xs text-slate-500">{ f.MessagingAccountID }</dd>
+						}
+					</div>
+					<div>
+						<dt class="text-xs font-medium uppercase tracking-wide text-slate-400">Display phone</dt>
+						<dd class="mt-1 text-sm font-medium text-slate-900">{ statusText(f.PhoneNumber != "") }</dd>
+						if f.PhoneNumber != "" {
+							<dd class="text-xs text-slate-500">{ f.PhoneNumber } ({ f.VerifiedName })</dd>
+						}
+					</div>
+				</dl>
+			</div>
+
 			<form method="post" action="/admin/whatsapp" class="rounded-lg border border-slate-200 bg-white shadow-sm">
 				<div class="border-b border-slate-100 px-6 py-4">
 					<h3 class="text-sm font-semibold text-slate-900">Meta Cloud API</h3>
@@ -140,11 +174,18 @@ templ WhatsappConfig(page components.Page, f WhatsappForm) {
 	}
 }
 
-func secretPlaceholder(configured bool) string {
+func secretStatus(configured bool) string {
 	if configured {
-		return "•••••••• configured"
+		return "Configured (encrypted)"
 	}
-	return "not set"
+	return "Not configured"
+}
+
+func statusText(ok bool) string {
+	if ok {
+		return "Set"
+	}
+	return "Missing"
 }
 
 func noticeClass(kind string) string {
