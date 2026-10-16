@@ -385,6 +385,13 @@ func statusText(ok bool) string {
 	return "Missing"
 }
 
+func secretPlaceholder(configured bool) string {
+	if configured {
+		return "•••••••• configured"
+	}
+	return "not set"
+}
+
 func noticeClass(kind string) string {
 	switch kind {
 	case "error":
