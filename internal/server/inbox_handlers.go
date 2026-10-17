@@ -211,20 +211,19 @@ func (a *App) handleInboxReply(k *kit.Kit) error {
 	}
 
 	errMsg, okMsg := "", ""
-	switch _, err := a.WhatsApp.SendReply(k.Request.Context(), id, body); {
-	case err == nil:
+	_, sendErr := a.WhatsApp.SendReply(k.Request.Context(), id, body)
+	switch {
+	case sendErr == nil:
 		okMsg = page.T("inbox.replySent")
 		// Re-fetch so the outgoing bubble shows up in the swapped card right away
 		// instead of waiting for the fragment poll.
 		conv, msgs, _ = a.WhatsApp.Thread(k.Request.Context(), id)
-	case errors.Is(err, whatsapp.ErrReplyWindowClosed):
-		errMsg = explanationForReply(page.I18N, err)
-		// Re-fetch so a recorded failed bubble (e.g. a meta rejection) shows.
-		conv, msgs, _ = a.WhatsApp.Thread(k.Request.Context(), id)
-	case errors.Is(err, whatsapp.ErrConversationNotFound):
+	case errors.Is(sendErr, whatsapp.ErrConversationNotFound):
 		return k.Redirect(http.StatusSeeOther, "/inbox?flash=notfound")
 	default:
-		errMsg = explanationForReply(page.I18N, err)
+		a.Log.Warn("inbox reply failed", "id", id, "error", sendErr.Error())
+		errMsg = explanationForReply(page.I18N, sendErr)
+		// Re-fetch so a recorded failed bubble (e.g. a meta rejection) shows.
 		conv, msgs, _ = a.WhatsApp.Thread(k.Request.Context(), id)
 	}
 
@@ -293,15 +292,15 @@ func (a *App) handleInboxReplyAudio(k *kit.Kit) error {
 	}
 
 	errMsg, okMsg := "", ""
-	switch _, serr := a.WhatsApp.SendAudioReply(k.Request.Context(), id, mime, audioFilename(hdr.Filename, mime), data, durationMS); {
-	case serr == nil:
+	_, asendErr := a.WhatsApp.SendAudioReply(k.Request.Context(), id, mime, audioFilename(hdr.Filename, mime), data, durationMS)
+	switch {
+	case asendErr == nil:
 		okMsg = page.T("inbox.voiceSent")
-	case errors.Is(serr, whatsapp.ErrReplyWindowClosed):
-		errMsg = explanationForReply(page.I18N, serr)
-	case errors.Is(serr, whatsapp.ErrConversationNotFound):
+	case errors.Is(asendErr, whatsapp.ErrConversationNotFound):
 		return k.Redirect(http.StatusSeeOther, "/inbox?flash=notfound")
 	default:
-		errMsg = explanationForReply(page.I18N, serr)
+		a.Log.Warn("inbox audio reply failed", "id", id, "error", asendErr.Error())
+		errMsg = explanationForReply(page.I18N, asendErr)
 	}
 
 	conv, msgs, _ := a.WhatsApp.Thread(k.Request.Context(), id)
@@ -354,15 +353,15 @@ func (a *App) handleInboxReplyImage(k *kit.Kit) error {
 	}
 
 	errMsg, okMsg := "", ""
-	switch _, serr := a.WhatsApp.SendImageReply(k.Request.Context(), id, mime, imageFilename(mime), data, ""); {
-	case serr == nil:
+	_, isendErr := a.WhatsApp.SendImageReply(k.Request.Context(), id, mime, imageFilename(mime), data, "")
+	switch {
+	case isendErr == nil:
 		okMsg = page.T("inbox.imageSent")
-	case errors.Is(serr, whatsapp.ErrReplyWindowClosed):
-		errMsg = explanationForReply(page.I18N, serr)
-	case errors.Is(serr, whatsapp.ErrConversationNotFound):
+	case errors.Is(isendErr, whatsapp.ErrConversationNotFound):
 		return k.Redirect(http.StatusSeeOther, "/inbox?flash=notfound")
 	default:
-		errMsg = explanationForReply(page.I18N, serr)
+		a.Log.Warn("inbox image reply failed", "id", id, "error", isendErr.Error())
+		errMsg = explanationForReply(page.I18N, isendErr)
 	}
 
 	conv, msgs, _ := a.WhatsApp.Thread(k.Request.Context(), id)

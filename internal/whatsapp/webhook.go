@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"errors"
 	"strconv"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // StatusUpdate is one delivery-status event sent by Meta for an outbound
@@ -41,11 +43,11 @@ type InboundMessage struct {
 	// MediaID/MIME/duration are present for media messages (audio/voice,
 	// image...); TextBody is empty for them. The media bytes are downloaded
 	// later via DownloadMedia and stored on the chat_messages row.
-	MediaID        string
-	MediaMime      string
-	MediaFilename  string
+	MediaID         string
+	MediaMime       string
+	MediaFilename   string
 	MediaDurationMS int
-	Caption        string
+	Caption         string
 }
 
 // WebhookDelivery is the combined decode of one Meta webhook POST: delivery
@@ -108,33 +110,33 @@ func ParseWebhook(body []byte) (WebhookDelivery, error) {
 							Title string `json:"title"`
 						} `json:"errors"`
 					} `json:"statuses"`
-Messages []struct {
-					From      string `json:"from"`
-					ID        string `json:"id"`
-					Timestamp string `json:"timestamp"`
-					Type      string `json:"type"`
-					Text      struct {
-						Body string `json:"body"`
-					} `json:"text"`
-					Audio struct {
-						ID         string `json:"id"`
-						MimeType   string `json:"mime_type"`
-						SHA256     string `json:"sha256"`
-						Voice      bool   `json:"voice"`
-						DurationMS int    `json:"duration_ms"`
-					} `json:"audio"`
-					Image struct {
-						ID       string `json:"id"`
-						MimeType string `json:"mime_type"`
-						SHA256   string `json:"sha256"`
-						Caption  string `json:"caption"`
-					} `json:"image"`
-					Document struct {
-						ID       string `json:"id"`
-						MimeType string `json:"mime_type"`
-						Filename string `json:"filename"`
-					} `json:"document"`
-				} `json:"messages"`
+					Messages []struct {
+						From      string `json:"from"`
+						ID        string `json:"id"`
+						Timestamp string `json:"timestamp"`
+						Type      string `json:"type"`
+						Text      struct {
+							Body string `json:"body"`
+						} `json:"text"`
+						Audio struct {
+							ID         string `json:"id"`
+							MimeType   string `json:"mime_type"`
+							SHA256     string `json:"sha256"`
+							Voice      bool   `json:"voice"`
+							DurationMS int    `json:"duration_ms"`
+						} `json:"audio"`
+						Image struct {
+							ID       string `json:"id"`
+							MimeType string `json:"mime_type"`
+							SHA256   string `json:"sha256"`
+							Caption  string `json:"caption"`
+						} `json:"image"`
+						Document struct {
+							ID       string `json:"id"`
+							MimeType string `json:"mime_type"`
+							Filename string `json:"filename"`
+						} `json:"document"`
+					} `json:"messages"`
 					Contacts []struct {
 						Profile struct {
 							Name string `json:"name"`
@@ -265,6 +267,11 @@ func (s *Service) ApplyStatusUpdate(ctx context.Context, u StatusUpdate) error {
 		u.MetaMessageID,
 	).Scan(&current)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Not one of our sends (another app/tool shares the number, or the
+			// row was removed): nothing to advance, so not an error.
+			return nil
+		}
 		return err
 	}
 	if !ShouldAdvanceStatus(current, u.Status) {
