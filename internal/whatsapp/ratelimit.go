@@ -164,7 +164,7 @@ func (l *RateLimiter) AllowPlatform(ctx context.Context) error {
 
 	const globalScope = "global"
 
-	var counted bool
+	var counted int
 	err := l.db.QueryRow(ctx, `
 		INSERT INTO send_rate_windows (scope, window_start, count)
 		VALUES ($1::text, $2::timestamptz, 1)
